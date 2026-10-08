@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Badulaque Central</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+</head>
+<body>
+  <div class="bg-shape bg-shape-a"></div>
+  <div class="bg-shape bg-shape-b"></div>
+
+  <main class="app-shell">
+    <header class="topbar">
+      <h1>Badulaque Central</h1>
+      <p>En Servicio</p>
+    </header>
+
+    <nav class="tabs" aria-label="Secciones">
+      <button class="tab is-active" data-tab-target="tab-caja">Caja</button>
+      <button class="tab" data-tab-target="tab-conta">Facturas / Rascas</button>
+      <button class="tab" data-tab-target="tab-craft">Crafteos / Suministros</button>
+    </nav>
+
+    <section id="tab-caja" class="tab-panel is-active">
+      <div class="split">
+        <section class="card">
+          <div class="card-head-row">
+            <h2>Productos</h2>
+            <button type="button" id="btn-add-product" class="ghost small">Gestión de Productos</button>
+          </div>
+          <div id="product-grid" class="product-grid"></div>
+        </section>
+
+        <section class="card ticket-card">
+          <h2>Ticket</h2>
+          <div class="table-wrap ticket-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th class="num">Cant.</th>
+                  <th class="num">Precio</th>
+                  <th class="num">Subtotal</th>
+                  <th class="num">Borrar</th>
+                </tr>
+              </thead>
+              <tbody id="ticket-body"></tbody>
+            </table>
+          </div>
+
+          <div class="kpi-line">
+            <span>Total</span>
+            <strong id="ticket-total">$ 0</strong>
+          </div>
+
+          <div class="actions ticket-actions">
+            <button id="btn-undo">Deshacer</button>
+            <button id="btn-remove">Quitar</button>
+            <button id="btn-clear">Limpiar</button>
+            <button id="btn-copy-total">Copiar total</button>
+            <button id="btn-copy-concept">Copiar concepto</button>
+          </div>
+
+          <div class="ticket-logo">
+            <img src="badulaque_central_logo.png" alt="Badulaque Central" />
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="tab-conta" class="tab-panel">
+      <div class="split">
+        <section class="card">
+          <h2>Texto de Discord</h2>
+          <textarea id="conta-input" rows="14" placeholder="Pega aqui el texto y pulsa Procesar"></textarea>
+          <div class="actions">
+            <button id="conta-paste">Pegar + Procesar</button>
+            <button id="conta-process">Procesar</button>
+            <button id="conta-clear">Limpiar</button>
+            <button id="conta-export">Exportar CSV</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Resumen</h2>
+          <div class="summary-grid">
+            <article class="mini-card">
+              <h3>Facturas</h3>
+              <p id="inv-line1">Total: -</p>
+              <p id="inv-line2">Pagadas: -</p>
+              <p id="inv-line3">Pendientes: -</p>
+            </article>
+            <article class="mini-card">
+              <h3>Rasca y Gana</h3>
+              <p id="sales-line1">Ventas: -</p>
+              <p id="sales-line2">Total: -</p>
+            </article>
+          </div>
+
+          <div class="actions">
+            <button id="conta-half">Ver 50%</button>
+            <button id="conta-employees">Totales empleados</button>
+            <button id="conta-manage-employees">Gestion empleados</button>
+          </div>
+
+          <p class="muted" id="conta-loaded">Sin datos</p>
+
+          <h3>Facturas por empleado</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Empleado</th>
+                  <th class="num">Total</th>
+                  <th class="num">Pagado</th>
+                  <th class="num">Pendiente</th>
+                </tr>
+              </thead>
+              <tbody id="inv-table"></tbody>
+            </table>
+          </div>
+
+          <h3>Rascas por empleado</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Empleado</th>
+                  <th class="num">Cant.</th>
+                  <th class="num">Total</th>
+                </tr>
+              </thead>
+              <tbody id="sales-table"></tbody>
+            </table>
+          </div>
+
+          <div class="kpi-line">
+            <span>Total general</span>
+            <strong id="conta-total-general">$ 0</strong>
+          </div>
+          <p class="muted" id="conta-footer">Facturas: 0 | Rascas: 0</p>
+        </section>
+      </div>
+    </section>
+
+    <section id="tab-craft" class="tab-panel">
+      <div class="split">
+        <section class="card">
+          <h2>Log de crafteo</h2>
+          <textarea id="craft-input" rows="14" placeholder="Pega aqui el log y pulsa Procesar"></textarea>
+          <div class="actions">
+            <button id="craft-paste">Pegar + Procesar</button>
+            <button id="craft-process">Procesar</button>
+            <button id="craft-clear">Limpiar</button>
+            <button id="craft-export">Exportar CSV</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Resumen</h2>
+          <p id="craft-total-items">Items crafteados: -</p>
+          <p id="craft-total-sup">Suministros gastados: -</p>
+          <p class="warn" id="craft-unknown"></p>
+
+          <h3>Por empleado</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Empleado</th>
+                  <th class="num">Items</th>
+                  <th class="num">Suministros</th>
+                </tr>
+              </thead>
+              <tbody id="craft-emp-table"></tbody>
+            </table>
+          </div>
+
+          <h3>Por producto</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th class="num">Cantidad</th>
+                  <th class="num">Suministros</th>
+                </tr>
+              </thead>
+              <tbody id="craft-item-table"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="add-product-modal">
+    <form method="dialog" class="modal-card">
+      <header class="modal-head">
+        <h3>Gestión de Productos</h3>
+        <button value="cancel" class="ghost">Cerrar</button>
+      </header>
+
+      <nav class="subtabs">
+        <button type="button" class="subtab is-active" data-subtab-target="prod-tab-add">Agregar</button>
+        <button type="button" class="subtab" data-subtab-target="prod-tab-edit">Editar / Quitar</button>
+      </nav>
+
+      <section id="prod-tab-add" class="subtab-panel is-active">
+        <div class="form-grid">
+          <input id="prod-new-name" class="text-input" type="text" placeholder="Nombre del producto" />
+          <input id="prod-new-price" class="text-input" type="number" min="0" step="1" placeholder="Precio" />
+          <input id="prod-new-supplies" class="text-input" type="number" min="0" step="1" placeholder="Suministros por unidad" />
+        </div>
+
+        <div class="form-row">
+          <label for="prod-new-image">Icono (imagen)</label>
+          <input id="prod-new-image" type="file" accept="image/png, image/jpeg, image/webp" />
+        </div>
+        <p class="muted" id="prod-new-image-hint">Si no subes una imagen, se genera un icono simple automaticamente.</p>
+
+        <div class="product-preview" id="prod-new-preview" style="display:none;">
+          <img id="prod-new-preview-img" alt="Vista previa" />
+        </div>
+
+        <p class="error-text" id="prod-new-error" role="alert" aria-live="polite"></p>
+
+        <footer class="actions">
+          <button type="button" id="prod-new-save">Guardar producto</button>
+          <button type="button" id="prod-new-cancel-edit" class="ghost" style="display:none;">Cancelar edición</button>
+        </footer>
+      </section>
+
+      <section id="prod-tab-edit" class="subtab-panel">
+        <div class="form-row">
+          <input id="prod-search" class="text-input" type="text" placeholder="Buscar producto..." />
+        </div>
+        <div class="table-wrap" style="max-height: 44vh;">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>Nombre</th>
+                <th class="num">Precio</th>
+                <th class="num">Suministros</th>
+                <th>Origen</th>
+                <th class="num">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="prod-admin-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </form>
+  </dialog>
+
+  <dialog id="employees-modal">
+    <form method="dialog" class="modal-card">
+      <header class="modal-head">
+        <h3>Totales por empleado</h3>
+        <button value="cancel" class="ghost">Cerrar</button>
+      </header>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Empleado</th>
+              <th>Rango</th>
+              <th class="num">Facturas</th>
+              <th class="num">Rascas</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody id="employees-body"></tbody>
+        </table>
+      </div>
+      <p class="muted" id="employees-bank-total">Total banco: $ 0</p>
+      <footer class="actions">
+        <button type="button" id="employees-copy-sel">Copiar seleccionado</button>
+        <button type="button" id="employees-remove" class="danger">Quitar de la lista</button>
+        <button type="button" id="employees-copy-all">Copiar todo</button>
+        <button type="button" id="employees-manage">Gestion empleados</button>
+      </footer>
+    </form>
+  </dialog>
+
+
+  <dialog id="employees-admin-modal">
+    <form method="dialog" class="modal-card">
+      <header class="modal-head">
+        <h3>Gestion de empleados</h3>
+        <button value="cancel" class="ghost">Cerrar</button>
+      </header>
+
+      <section class="admin-grid">
+        <div class="admin-block">
+          <h4>Acceso</h4>
+          <div class="form-row">
+            <label for="emp-admin-pass">Contrasena</label>
+            <input id="emp-admin-pass" class="text-input" type="password" placeholder="••••••••" autocomplete="current-password" />
+            <button type="button" id="emp-admin-unlock">Desbloquear</button>
+          </div>
+          <p class="muted" id="emp-admin-status">Bloqueado</p>
+        </div>
+
+        <div class="admin-block">
+          <h4>Nuevo empleado</h4>
+          <div class="form-grid">
+            <input id="emp-new-name" class="text-input" type="text" placeholder="Nombre" />
+            <input id="emp-new-surname" class="text-input" type="text" placeholder="Apellido" />
+            <input id="emp-new-rank" class="text-input" type="text" placeholder="Rango (opcional)" />
+          </div>
+          <div class="actions">
+            <button type="button" id="emp-new-add">Añadir</button>
+          </div>
+          <p class="muted" id="emp-new-hint">Tip: usa el mismo nombre y apellido que sale en Discord (Emitida por / Vendedor).</p>
+        </div>
+      </section>
+
+      <h4>Empleados</h4>
+      <div class="form-row">
+        <input id="emp-search" class="text-input" type="text" placeholder="Buscar por nombre, apellido o rango..." />
+        <button type="button" id="emp-refresh">Actualizar</button>
+      </div>
+
+      <div class="table-wrap" style="max-height: 44vh;">
+        <table>
+          <thead>
+            <tr>
+              <th>Empleado</th>
+              <th>Rango</th>
+              <th class="num">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="emp-admin-body"></tbody>
+        </table>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="access-modal">
+    <div class="modal-card access-card">
+      <header class="modal-head">
+        <h3 id="access-title">Acceso restringido</h3>
+        <button type="button" id="access-cancel" class="ghost">Cerrar</button>
+      </header>
+
+      <p class="muted access-help">
+        Para entrar, introduce la contraseña.
+      </p>
+
+      <div class="form-row">
+        <label for="access-pass">Contraseña</label>
+        <div class="pass-wrap">
+          <input id="access-pass" class="text-input" type="password" placeholder="••••••••" autocomplete="current-password" />
+          <button type="button" id="access-toggle" class="ghost small">Mostrar</button>
+        </div>
+      </div>
+      <p class="error-text" id="access-error" role="alert" aria-live="polite"></p>
+
+      <footer class="actions">
+        <button type="button" id="access-ok">Entrar</button>
+        <button type="button" id="access-cancel-2" class="ghost">Cancelar</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog id="access-modal" class="access-modal">
+    <form method="dialog" class="modal-card">
+      <header class="modal-head">
+        <h3 id="access-title">Acceso restringido</h3>
+        <button value="cancel" class="ghost" aria-label="Cerrar">Cerrar</button>
+      </header>
+
+      <p class="muted" style="margin-top: 6px; margin-bottom: 10px;">
+        Introduce la contraseña para entrar.
+      </p>
+
+      <div class="form-row" style="margin-top: 0;">
+        <input id="access-pass" class="text-input" type="password" placeholder="Contraseña" autocomplete="current-password" />
+        <button type="button" id="access-toggle" class="ghost">Mostrar</button>
+      </div>
+
+      <p class="warn" id="access-error" style="min-height: 20px; margin: 6px 0 0;"></p>
+
+      <footer class="actions" style="justify-content: flex-end;">
+        <button type="button" id="access-enter">Entrar</button>
+        <button value="cancel" id="access-cancel" class="ghost">Cancelar</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="copy-fallback-modal">
+    <form method="dialog" class="modal-card">
+      <header class="modal-head">
+        <h3>Copiar texto</h3>
+        <button type="submit" class="icon-btn" aria-label="Cerrar">✕</button>
+      </header>
+      <p class="muted" id="copy-fallback-note">
+        Tu navegador ha bloqueado la copia automática (HTTP). El texto está seleccionado: pulsa Ctrl+C (o ⌘C).
+      </p>
+      <textarea id="copy-fallback-text" class="copy-fallback-text" readonly rows="10"></textarea>
+      <footer class="actions">
+        <button type="button" id="copy-fallback-select">Seleccionar todo</button>
+        <button type="button" id="copy-fallback-copy">Intentar copiar</button>
+        <button type="button" id="copy-fallback-download">Descargar .txt</button>
+        <button type="submit">Cerrar</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
