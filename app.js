@@ -13,13 +13,13 @@
 // ============================================================================
 const PASSWORD_SALT = "badulaque-central:";
 const PASSWORD_HASHES = {
-  // Pestaña "Facturas / Rascas" (incluye Ver 50% y Totales empleados). Clave: 0000
+  // Pestaña "Facturas / Rascas" (incluye Ver 50% y Totales empleados)
   facturas: "a4fe25703d42698a827a9cd17dd1188816815b17acbd993cf6d8e00c9ea47f90",
-  // Pestaña "Crafteos / Suministros". Clave: 0000
+  // Pestaña "Crafteos / Suministros"
   crafteos: "a4fe25703d42698a827a9cd17dd1188816815b17acbd993cf6d8e00c9ea47f90",
-  // "Gestion de Productos" (precios, suministros, quitar productos). Clave: Central2026
+  // "Gestion de Productos" (precios, suministros, quitar productos)
   productos: "90eccde9a19cf1774a195275bd98980033549798875958431524785ecbce54dd",
-  // "Gestion empleados" (añadir / eliminar empleados). Clave: Central2026
+  // "Gestion empleados" (añadir / eliminar empleados)
   empleados: "90eccde9a19cf1774a195275bd98980033549798875958431524785ecbce54dd",
 };
 
