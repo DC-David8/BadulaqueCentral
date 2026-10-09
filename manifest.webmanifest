@@ -1,0 +1,17 @@
+{
+  "name": "Badulaque Central",
+  "short_name": "Badulaque",
+  "description": "Caja registradora del Badulaque Central",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1118",
+  "theme_color": "#0d1118",
+  "icons": [
+    { "src": "iconos/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "iconos/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "iconos/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

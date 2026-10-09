@@ -82,12 +82,22 @@ Las contraseñas no están escritas en el código: solo se guarda su huella SHA-
 ├── styles.css     Estilos (tema azul)
 ├── app.js         Caja, procesado de Discord, crafteos, empleados y contraseñas
 ├── favicon.ico
+├── manifest.webmanifest  Datos de la app web (nombre, colores e iconos)
+├── iconos/        Icono del Inicio y pantallas de arranque del iPhone
 └── *.png          Logo del Badulaque e iconos de los productos
 ```
 
 No necesita servidor ni dependencias: es HTML, CSS y JavaScript puros.
 
 **Versión de escritorio:** el `.exe` carga la misma web. Ahí los empleados se guardan en el programa de Python; en la web, en el navegador.
+
+## App en el iPhone
+
+En Safari: **Compartir → Añadir a pantalla de inicio**. Se instala como app con el icono del Badulaque y, al abrirla, muestra el logo mientras carga.
+
+Si ya la tenías anclada de antes, bórrala del Inicio y vuelve a añadirla: el iPhone guarda el icono antiguo.
+
+Para regenerar los iconos tras cambiar el logo, sustituye los PNG de `iconos/` manteniendo el nombre y el tamaño de cada uno.
 
 ## Publicar en GitHub Pages
 
@@ -103,6 +113,11 @@ En el repositorio: **Settings → Pages → Build and deployment → Source: Dep
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits.
+
+### 2026-10-09 · Icono y pantalla de arranque en el iPhone
+- Icono del Badulaque al anclar la web al Inicio (`apple-touch-icon` y manifiesto de app web).
+- Pantalla de arranque con el logo para cada tamaño de iPhone, del SE al 16 Pro Max.
+- Se abre a pantalla completa, sin la barra de Safari.
 
 ### 2026-10-09 · README y bitácora
 - Descripción completa del proyecto, tabla de productos y guía de contraseñas.
