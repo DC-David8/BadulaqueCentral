@@ -1,91 +1,102 @@
+// ============================================================================
+// CONTRASEÑAS
+// ----------------------------------------------------------------------------
+// Cada zona protegida tiene su propia contraseña. No se guardan en texto
+// plano: solo su huella SHA-256, para que no se puedan leer mirando el codigo
+// en GitHub.
+//
+// Para cambiar una contraseña:
+//   1. Abre la pagina en el navegador, pulsa F12 -> pestaña "Consola".
+//   2. Escribe:  await baduHash("tu_nueva_clave")   y pulsa Enter.
+//   3. Copia el texto que sale y pegalo en la zona que quieras de abajo.
+// Si dos zonas tienen la misma huella, comparten contraseña.
+// ============================================================================
+const PASSWORD_SALT = "badulaque-central:";
+const PASSWORD_HASHES = {
+  // Pestaña "Facturas / Rascas" (incluye Ver 50% y Totales empleados). Clave: 0000
+  facturas: "a4fe25703d42698a827a9cd17dd1188816815b17acbd993cf6d8e00c9ea47f90",
+  // Pestaña "Crafteos / Suministros". Clave: 0000
+  crafteos: "a4fe25703d42698a827a9cd17dd1188816815b17acbd993cf6d8e00c9ea47f90",
+  // "Gestion de Productos" (precios, suministros, quitar productos). Clave: Central2026
+  productos: "90eccde9a19cf1774a195275bd98980033549798875958431524785ecbce54dd",
+  // "Gestion empleados" (añadir / eliminar empleados). Clave: Central2026
+  empleados: "90eccde9a19cf1774a195275bd98980033549798875958431524785ecbce54dd",
+};
 
-
-function createAccessRequester() {
-  const dlg = byId("access-modal");
-  if (!dlg) {
-    return async ({ required }) => {
-      const pass = window.prompt("Introduce la contraseña:");
-      return pass === required;
-    };
-  }
-
-  const titleEl = byId("access-title");
-  const passEl = byId("access-pass");
-  const errorEl = byId("access-error");
-  const enterBtn = byId("access-enter");
-  const toggleBtn = byId("access-toggle");
-
-  let currentResolve = null;
-  let currentRequired = null;
-
-  function cleanupResolve(ok) {
-    if (currentResolve) {
-      const r = currentResolve;
-      currentResolve = null;
-      currentRequired = null;
-      r(ok);
+// SHA-256 en JS puro, por si crypto.subtle no esta disponible (pagina servida
+// por HTTP sin cifrar o webview antiguo).
+function sha256HexFallback(str) {
+  const bytes = new TextEncoder().encode(str);
+  const K = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ]);
+  const H = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+  const len = bytes.length;
+  const total = Math.ceil((len + 9) / 64) * 64;
+  const buf = new Uint8Array(total);
+  buf.set(bytes);
+  buf[len] = 0x80;
+  const dv = new DataView(buf.buffer);
+  dv.setUint32(total - 8, Math.floor(len / 0x20000000));
+  dv.setUint32(total - 4, (len * 8) >>> 0);
+  const W = new Uint32Array(64);
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let off = 0; off < total; off += 64) {
+    for (let t = 0; t < 16; t++) W[t] = dv.getUint32(off + t * 4);
+    for (let t = 16; t < 64; t++) {
+      const s0 = rotr(W[t - 15], 7) ^ rotr(W[t - 15], 18) ^ (W[t - 15] >>> 3);
+      const s1 = rotr(W[t - 2], 17) ^ rotr(W[t - 2], 19) ^ (W[t - 2] >>> 10);
+      W[t] = (W[t - 16] + s0 + W[t - 7] + s1) >>> 0;
     }
-  }
-
-  function open({ title, required }) {
-    currentRequired = required;
-    if (titleEl) titleEl.textContent = title || "Acceso restringido";
-    if (errorEl) errorEl.textContent = "";
-    if (passEl) passEl.value = "";
-    dlg.showModal();
-    setTimeout(() => {
-      try { passEl?.focus(); } catch {}
-    }, 0);
-
-    return new Promise((resolve) => {
-      currentResolve = resolve;
-    });
-  }
-
-  function trySubmit() {
-    const pass = String(passEl?.value ?? "");
-    if (pass === String(currentRequired ?? "")) {
-      dlg.close();
-      cleanupResolve(true);
-      return;
+    let [a, b, c, d, e, f, g, h] = H;
+    for (let t = 0; t < 64; t++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + K[t] + W[t]) >>> 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0;
+      d = c; c = b; b = a; a = (t1 + t2) >>> 0;
     }
-    if (errorEl) errorEl.textContent = "Contraseña incorrecta.";
-    try { passEl?.select(); } catch {}
+    H[0] += a; H[1] += b; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
   }
-
-  // Wire once
-  if (!dlg.dataset.wired) {
-    dlg.dataset.wired = "1";
-
-    enterBtn?.addEventListener("click", (e) => {
-      e.preventDefault();
-      trySubmit();
-    });
-
-    passEl?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        trySubmit();
-      }
-    });
-
-    toggleBtn?.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (!passEl) return;
-      passEl.type = passEl.type === "password" ? "text" : "password";
-      toggleBtn.textContent = passEl.type === "password" ? "Mostrar" : "Ocultar";
-      try { passEl.focus(); } catch {}
-    });
-
-    dlg.addEventListener("close", () => cleanupResolve(false));
-    dlg.addEventListener("cancel", (e) => {
-      e.preventDefault();
-      dlg.close();
-    });
-  }
-
-  return async ({ title, required }) => open({ title, required });
+  return Array.from(H, (x) => x.toString(16).padStart(8, "0")).join("");
 }
+
+async function sha256Hex(str) {
+  try {
+    if (window.crypto?.subtle) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+      return Array.from(new Uint8Array(digest), (x) => x.toString(16).padStart(2, "0")).join("");
+    }
+  } catch {
+    // sigue con la version JS
+  }
+  return sha256HexFallback(str);
+}
+
+// Ayuda para generar huellas desde la consola del navegador (ver arriba).
+async function baduHash(password) {
+  return sha256Hex(PASSWORD_SALT + String(password ?? ""));
+}
+window.baduHash = baduHash;
+
+async function verifyPassword(zone, password) {
+  const expected = PASSWORD_HASHES[zone];
+  if (!expected) return false;
+  const pass = String(password ?? "");
+  if (!pass) return false;
+  return (await baduHash(pass)) === expected;
+}
+
 const PRODUCTS = [
   { name: "Alitas", price: 1000, image: "alitas.png" },
   { name: "Venda", price: 600, image: "venda.png" },
@@ -174,12 +185,11 @@ const RE_DTF_AUT = /^\s*AUT:\s*([^\s\u2022]+)\s*\u2022\s*TARJETA:\s*(.+?)\s*\u20
 const RE_CRAFTEO = /^\s*(?<who>.+?)\s+crafte(?:o|\u00f3)\s+(?<qty>\d+)x\s+(?<item>.+?)\s*$/i;
 
 const byId = (id) => document.getElementById(id);
-const ACCESS_PASSWORDS = {
-  "tab-conta": "0000",
-  "tab-craft": "0000",
+// Pestañas protegidas -> zona de contraseña (ver PASSWORD_HASHES).
+const TAB_PASSWORD_ZONES = {
+  "tab-conta": "facturas",
+  "tab-craft": "crafteos",
 };
-
-const EMPLOYEE_ADMIN_PASSWORD = ACCESS_PASSWORDS["tab-conta"];
 
 const EMPLOYEE_STORAGE_KEY = "badu_employees_v1";
 
@@ -255,8 +265,8 @@ async function listEmployees() {
 }
 
 async function addEmployee(payload, password) {
-  if (String(password || "") !== String(EMPLOYEE_ADMIN_PASSWORD || "")) {
-    throw new Error("Contrasena incorrecta");
+  if (!(await verifyPassword("empleados", password))) {
+    throw new Error("Contraseña incorrecta");
   }
 
   const api = await waitPyApi();
@@ -272,8 +282,8 @@ async function addEmployee(payload, password) {
 }
 
 async function deleteEmployee(id, password) {
-  if (String(password || "") !== String(EMPLOYEE_ADMIN_PASSWORD || "")) {
-    throw new Error("Contrasena incorrecta");
+  if (!(await verifyPassword("empleados", password))) {
+    throw new Error("Contraseña incorrecta");
   }
 
   const api = await waitPyApi();
@@ -536,7 +546,9 @@ function sortByValueDescThenName(a, b) {
   return a[0].localeCompare(b[0], "es", { sensitivity: "base" });
 }
 
-function showAccessModal({ sectionLabel, requiredPassword }) {
+// Pide la contraseña de una zona. Devuelve true solo si es correcta.
+// Escape, "Cerrar" o "Cancelar" siempre devuelven false.
+function showAccessModal({ sectionLabel, zone }) {
   const dlg = byId("access-modal");
   const titleEl = byId("access-title");
   const input = byId("access-pass");
@@ -547,8 +559,8 @@ function showAccessModal({ sectionLabel, requiredPassword }) {
   const btnToggle = byId("access-toggle");
 
   if (!dlg || !titleEl || !input || !errEl || !btnOk || !btnCancel1 || !btnCancel2 || !btnToggle) {
-    const pass = window.prompt("Introduce la contrasena:");
-    return Promise.resolve(pass === requiredPassword);
+    const pass = window.prompt("Introduce la contraseña:");
+    return verifyPassword(zone, pass);
   }
 
   titleEl.textContent = sectionLabel ? `Acceso: ${sectionLabel}` : "Acceso restringido";
@@ -558,18 +570,28 @@ function showAccessModal({ sectionLabel, requiredPassword }) {
   btnToggle.textContent = "Mostrar";
 
   return new Promise((resolve) => {
-    const onOk = () => {
-      const pass = String(input.value || "");
-      if (pass !== String(requiredPassword || "")) {
-        errEl.textContent = "Contrasena incorrecta.";
-        input.focus();
-        input.select();
-        return;
+    let granted = false;
+    let checking = false;
+
+    const onOk = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const ok = await verifyPassword(zone, input.value);
+        if (!ok) {
+          errEl.textContent = "Contraseña incorrecta.";
+          input.focus();
+          input.select();
+          return;
+        }
+        granted = true;
+        dlg.close();
+      } finally {
+        checking = false;
       }
-      dlg.close("ok");
     };
 
-    const onCancel = () => dlg.close("cancel");
+    const onCancel = () => dlg.close();
 
     const onToggle = () => {
       if (input.type === "password") {
@@ -590,9 +612,9 @@ function showAccessModal({ sectionLabel, requiredPassword }) {
     };
 
     const onClose = () => {
-      const ok = dlg.returnValue === "ok";
       cleanup();
-      resolve(ok);
+      input.value = "";
+      resolve(granted);
     };
 
     const cleanup = () => {
@@ -621,8 +643,6 @@ function setupTabs() {
   const panels = document.querySelectorAll(".tab-panel");
   const unlocked = new Set();
 
-  const requestAccess = createAccessRequester();
-
   const openTab = (tab) => {
     tabs.forEach((t) => t.classList.remove("is-active"));
     panels.forEach((p) => p.classList.remove("is-active"));
@@ -633,11 +653,11 @@ function setupTabs() {
   tabs.forEach((tab) => {
     tab.addEventListener("click", async () => {
       const target = tab.dataset.tabTarget;
-      const required = ACCESS_PASSWORDS[target];
-      if (required && !unlocked.has(target)) {
+      const zone = TAB_PASSWORD_ZONES[target];
+      if (zone && !unlocked.has(target)) {
         const ok = await showAccessModal({
           sectionLabel: tab.textContent?.trim() || "Acceso restringido",
-          requiredPassword: required,
+          zone,
         });
         if (!ok) return;
         unlocked.add(target);
@@ -651,7 +671,9 @@ function setupTabs() {
 // Productos gestionados desde la app ("Gestion de Productos")
 // ============================================================================
 
-const PRODUCT_ADMIN_PASSWORD = "0000";
+// true solo mientras la ventana de Gestion de Productos esta abierta tras
+// meter la contraseña correcta.
+let productAdminUnlocked = false;
 const CUSTOM_PRODUCTS_STORAGE_KEY = "badu_custom_products_v1";
 const PRODUCT_OVERRIDES_STORAGE_KEY = "badu_product_overrides_v1";
 
@@ -690,12 +712,12 @@ function saveProductOverridesLocal(map) {
   localStorage.setItem(PRODUCT_OVERRIDES_STORAGE_KEY, JSON.stringify(map || {}));
 }
 
-function checkProductPassword(password) {
-  if (String(password || "") !== PRODUCT_ADMIN_PASSWORD) throw new Error("Contrasena incorrecta");
+function checkProductPassword() {
+  if (!productAdminUnlocked) throw new Error("Contraseña incorrecta");
 }
 
-function addCustomProduct(payload, password) {
-  checkProductPassword(password);
+function addCustomProduct(payload) {
+  checkProductPassword();
   const list = loadCustomProductsLocal();
   list.push({
     id: safeRandomId(),
@@ -707,8 +729,8 @@ function addCustomProduct(payload, password) {
   saveCustomProductsLocal(list);
 }
 
-function updateCustomProduct(id, payload, password) {
-  checkProductPassword(password);
+function updateCustomProduct(id, payload) {
+  checkProductPassword();
   const list = loadCustomProductsLocal();
   const idx = list.findIndex((p) => String(p.id) === String(id));
   if (idx === -1) throw new Error("Producto no encontrado");
@@ -723,13 +745,13 @@ function updateCustomProduct(id, payload, password) {
   saveCustomProductsLocal(list);
 }
 
-function deleteCustomProduct(id, password) {
-  checkProductPassword(password);
+function deleteCustomProduct(id) {
+  checkProductPassword();
   saveCustomProductsLocal(loadCustomProductsLocal().filter((p) => String(p.id) !== String(id)));
 }
 
-function setFixedProductOverride(name, payload, password) {
-  checkProductPassword(password);
+function setFixedProductOverride(name, payload) {
+  checkProductPassword();
   const map = loadProductOverridesLocal();
   const key = normalizeKeySimple(name);
   const cur = map[key] || {};
@@ -742,8 +764,8 @@ function setFixedProductOverride(name, payload, password) {
   saveProductOverridesLocal(map);
 }
 
-function setFixedProductHidden(name, hidden, password) {
-  checkProductPassword(password);
+function setFixedProductHidden(name, hidden) {
+  checkProductPassword();
   const map = loadProductOverridesLocal();
   const key = normalizeKeySimple(name);
   map[key] = { ...(map[key] || {}), hidden: !!hidden };
@@ -869,7 +891,6 @@ function setupProductsAdminModal(onProductsChanged) {
   const searchEl = byId("prod-search");
   const bodyEl = byId("prod-admin-body");
 
-  let adminPass = "";
   let editing = null; // { fixed: bool, name?: string, id?: string }
   let pendingImage = "";
 
@@ -941,10 +962,10 @@ function setupProductsAdminModal(onProductsChanged) {
       tr.querySelector('[data-act="remove"]').addEventListener("click", async () => {
         try {
           if (row.fixed) {
-            setFixedProductHidden(row.name, !row.hidden, adminPass);
+            setFixedProductHidden(row.name, !row.hidden);
           } else {
             if (!confirm(`Eliminar "${row.name}" definitivamente?`)) return;
-            deleteCustomProduct(row.id, adminPass);
+            deleteCustomProduct(row.id);
           }
           renderAdminTable();
           onProductsChanged?.();
@@ -1000,12 +1021,12 @@ function setupProductsAdminModal(onProductsChanged) {
     try {
       if (!editing) {
         if (isDuplicateName(name)) { errorEl.textContent = "Ya existe un producto con ese nombre."; return; }
-        addCustomProduct({ name, price, supplies, image: pendingImage }, adminPass);
+        addCustomProduct({ name, price, supplies, image: pendingImage });
       } else if (editing.fixed) {
-        setFixedProductOverride(editing.name, { price, supplies, image: pendingImage }, adminPass);
+        setFixedProductOverride(editing.name, { price, supplies, image: pendingImage });
       } else {
         if (isDuplicateName(name, normalizeKeySimple(editing.name))) { errorEl.textContent = "Ya existe un producto con ese nombre."; return; }
-        updateCustomProduct(editing.id, { name, price, supplies, image: pendingImage }, adminPass);
+        updateCustomProduct(editing.id, { name, price, supplies, image: pendingImage });
       }
     } catch (err) {
       errorEl.textContent = String(err?.message || err);
@@ -1019,9 +1040,9 @@ function setupProductsAdminModal(onProductsChanged) {
   });
 
   openBtn.addEventListener("click", async () => {
-    const ok = await showAccessModal({ sectionLabel: "Gestion de Productos", requiredPassword: PRODUCT_ADMIN_PASSWORD });
+    const ok = await showAccessModal({ sectionLabel: "Gestión de Productos", zone: "productos" });
     if (!ok) return;
-    adminPass = PRODUCT_ADMIN_PASSWORD;
+    productAdminUnlocked = true;
     resetForm();
     showSubtab("prod-tab-add");
     searchEl.value = "";
@@ -1030,7 +1051,7 @@ function setupProductsAdminModal(onProductsChanged) {
   });
 
   modal.addEventListener("close", () => {
-    adminPass = "";
+    productAdminUnlocked = false;
     resetForm();
   });
 }
@@ -1778,7 +1799,7 @@ function setupEmployeesAdminModal({ onChanged }) {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-del");
         if (!unlocked) {
-          alert("Primero desbloquea con la contrasena.");
+          alert("Primero desbloquea con la contraseña.");
           return;
         }
         const emp = employees.find((x) => String(x.id) === String(id));
@@ -1807,21 +1828,30 @@ function setupEmployeesAdminModal({ onChanged }) {
     }
   }
 
-  byId("emp-admin-unlock").addEventListener("click", () => {
+  async function tryUnlock() {
     const p = String(passInput.value || "");
     if (!p) {
-      setStatus("Escribe la contrasena.");
+      setStatus("Escribe la contraseña.");
       return;
     }
-    if (p !== String(EMPLOYEE_ADMIN_PASSWORD || "")) {
+    if (!(await verifyPassword("empleados", p))) {
       unlocked = false;
       adminPass = "";
-      setStatus("Contrasena incorrecta.");
+      setStatus("Contraseña incorrecta.");
       return;
     }
     unlocked = true;
     adminPass = p;
+    passInput.value = "";
     setStatus("Desbloqueado", true);
+  }
+
+  byId("emp-admin-unlock").addEventListener("click", tryUnlock);
+  passInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      tryUnlock();
+    }
   });
 
   byId("emp-new-add").addEventListener("click", async () => {
@@ -1834,7 +1864,7 @@ function setupEmployeesAdminModal({ onChanged }) {
       return;
     }
     if (!unlocked) {
-      alert("Primero desbloquea con la contrasena.");
+      alert("Primero desbloquea con la contraseña.");
       return;
     }
     try {
@@ -1852,9 +1882,12 @@ function setupEmployeesAdminModal({ onChanged }) {
   byId("emp-refresh").addEventListener("click", refresh);
   searchInput.addEventListener("input", renderList);
 
+  // Al cerrar la ventana se vuelve a bloquear.
   modal.addEventListener("close", () => {
-  });
-  modal.addEventListener("cancel", () => {
+    unlocked = false;
+    adminPass = "";
+    passInput.value = "";
+    setStatus("Bloqueado");
   });
 
   modal.addEventListener("badu-open", refresh);
