@@ -2106,6 +2106,15 @@ function setupMobileNav() {
   });
 }
 
+// Al abrir desde la pantalla de Inicio, el logo se queda un momento y se desvanece.
+(function hideAppSplash() {
+  const splash = byId("app-splash");
+  if (!splash || !document.documentElement.classList.contains("is-app")) return;
+  const hide = () => setTimeout(() => splash.classList.add("is-hidden"), 700);
+  if (document.readyState === "complete") hide();
+  else window.addEventListener("load", hide, { once: true });
+})();
+
 setupCopyFallbackModal();
 setupTabs();
 setupMobileNav();

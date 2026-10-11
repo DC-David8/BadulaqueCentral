@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=2" />
+  <link rel="stylesheet" href="styles.css?v=3" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
 
   <!-- App web (Inicio del iPhone / Android) -->
@@ -30,8 +30,18 @@
   <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="iconos/splash-1242x2208.png" />
   <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="iconos/splash-750x1334.png" />
   <link rel="apple-touch-startup-image" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="iconos/splash-640x1136.png" />
+
+  <script>
+    // Abierta desde la pantalla de Inicio: se muestra el logo al arrancar.
+    if (window.navigator.standalone || window.matchMedia("(display-mode: standalone)").matches) {
+      document.documentElement.classList.add("is-app");
+    }
+  </script>
 </head>
 <body>
+  <div id="app-splash" class="app-splash" aria-hidden="true">
+    <div class="app-splash-card"><img src="badulaque_central_logo.png" alt="" /></div>
+  </div>
   <div class="bg-shape bg-shape-a"></div>
   <div class="bg-shape bg-shape-b"></div>
 
@@ -431,6 +441,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

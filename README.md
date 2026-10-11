@@ -102,7 +102,7 @@ En pantallas pequeñas (móvil o app de la pantalla de Inicio) la página cambia
 
 ## App en el iPhone
 
-En Safari: **Compartir → Añadir a pantalla de inicio**. Se instala como app con el icono del Badulaque y, al abrirla, muestra el logo mientras carga.
+En Safari: **Compartir → Añadir a pantalla de inicio**. Se instala como app con el icono del Badulaque y, al abrirla, muestra el logo mientras carga y se desvanece al terminar.
 
 Si ya la tenías anclada de antes, bórrala del Inicio y vuelve a añadirla: el iPhone guarda el icono antiguo.
 
@@ -122,6 +122,10 @@ En el repositorio: **Settings → Pages → Build and deployment → Source: Dep
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits.
+
+### 2026-10-11 · Logo al abrir la app del Inicio
+- Al abrir la app desde la pantalla de Inicio, el logo se queda un momento en pantalla y se desvanece, como en Aguila Motors.
+- Es igual que la imagen de arranque del iPhone, así que el paso de una a otra no se nota. En Safari normal y en PC no aparece.
 
 ### 2026-10-11 · Vista para móvil
 - Menú oculto (☰) con las secciones, productos en lista con iconos pequeños y contador de unidades, y barra del ticket abajo con el total.

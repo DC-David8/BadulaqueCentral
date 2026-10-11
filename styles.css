@@ -729,3 +729,30 @@ button.danger {
   }
   .m-nav-item.is-active { background: #1f3658; border-color: rgba(31, 157, 255, 0.5); color: #5cc0ff; }
 }
+
+/* Pantalla de arranque al abrir la app desde la pantalla de Inicio.
+   Igual que la imagen de arranque del iPhone (iconos/splash-*.png):
+   el icono (logo en tarjeta blanca) centrado sobre el fondo de la web. */
+.app-splash { display: none; }
+.is-app .app-splash {
+  display: grid;
+  place-items: center;
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  padding-bottom: 6vh;
+  background: var(--bg);
+  transition: opacity 0.45s ease, visibility 0.45s;
+}
+.is-app .app-splash-card {
+  display: grid;
+  place-items: center;
+  width: 42vw;
+  height: 42vw;
+  max-width: 320px;
+  max-height: 320px;
+  border-radius: 22.5%;
+  background: #ffffff;
+}
+.is-app .app-splash-card img { width: 84%; height: 84%; object-fit: contain; }
+.is-app .app-splash.is-hidden { opacity: 0; visibility: hidden; }
