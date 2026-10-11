@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
 
   <!-- App web (Inicio del iPhone / Android) -->
@@ -39,6 +39,7 @@
     <header class="topbar">
       <h1>Badulaque Central</h1>
       <p>En Servicio</p>
+      <button type="button" class="m-menu-btn" id="m-menu-btn" aria-label="Abrir menú" aria-expanded="false">☰</button>
     </header>
 
     <nav class="tabs" aria-label="Secciones">
@@ -218,7 +219,27 @@
         </section>
       </div>
     </section>
+
+    <button type="button" class="m-ticket-bar" id="m-ticket-bar" aria-label="Ver el ticket">
+      <span class="m-ticket-label">Ticket</span>
+      <span class="m-ticket-count" id="m-ticket-count">Vacío</span>
+      <strong id="m-ticket-total">$ 0</strong>
+    </button>
   </main>
+
+  <!-- Menu lateral del movil (en PC no se muestra) -->
+  <div class="m-drawer" id="m-drawer" hidden>
+    <div class="m-drawer-backdrop" data-close="1"></div>
+    <nav class="m-drawer-panel" aria-label="Menú">
+      <div class="m-drawer-head">
+        <img src="badulaque_central_logo.png" alt="" />
+        <strong>Badulaque Central</strong>
+        <button type="button" class="ghost small" data-close="1" aria-label="Cerrar menú">✕</button>
+      </div>
+      <h3>Secciones</h3>
+      <div class="m-nav-list" id="m-nav-sections"></div>
+    </nav>
+  </div>
 
   <dialog id="add-product-modal">
     <form method="dialog" class="modal-card">
@@ -410,6 +431,6 @@
     </form>
   </dialog>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

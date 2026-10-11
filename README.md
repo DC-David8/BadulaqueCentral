@@ -91,6 +91,15 @@ No necesita servidor ni dependencias: es HTML, CSS y JavaScript puros.
 
 **Versión de escritorio:** el `.exe` carga la misma web. Ahí los empleados se guardan en el programa de Python; en la web, en el navegador.
 
+## Vista para móvil
+
+En pantallas pequeñas (móvil o app de la pantalla de Inicio) la página cambia sola; en PC se ve igual que siempre:
+
+- Cabecera compacta con un botón **☰** que abre un menú lateral con las secciones (Caja, Facturas / Rascas y Crafteos / Suministros). Las secciones con contraseña la siguen pidiendo.
+- Los productos se ven en **lista**: icono pequeño, nombre y precio en una fila, y un contador (×2) en los que ya están en el ticket.
+- Una barra abajo muestra cuántos productos y el total del ticket; al tocarla baja hasta el ticket.
+- En el ticket del móvil no sale la columna Precio (el subtotal ya lo incluye) ni el logo grande.
+
 ## App en el iPhone
 
 En Safari: **Compartir → Añadir a pantalla de inicio**. Se instala como app con el icono del Badulaque y, al abrirla, muestra el logo mientras carga.
@@ -113,6 +122,11 @@ En el repositorio: **Settings → Pages → Build and deployment → Source: Dep
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits.
+
+### 2026-10-11 · Vista para móvil
+- Menú oculto (☰) con las secciones, productos en lista con iconos pequeños y contador de unidades, y barra del ticket abajo con el total.
+- Misma mejora que la versión 16 de Aguila Motors, con los colores del Badulaque.
+- En PC la página se ve igual que antes.
 
 ### 2026-10-09 · Icono y pantalla de arranque en el iPhone
 - Icono del Badulaque al anclar la web al Inicio (`apple-touch-icon` y manifiesto de app web).

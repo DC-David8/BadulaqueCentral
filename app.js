@@ -1142,6 +1142,20 @@ function setupCaja() {
       ticketBody.appendChild(tr);
     }
     ticketTotal.textContent = fmtMoney(total);
+    renderQtyBadges();
+    const units = Object.values(state.cart).reduce((a, r) => a + (r.qty || 0), 0);
+    document.dispatchEvent(new CustomEvent("badu-ticket", { detail: { units, total } }));
+  }
+
+  // Cuantas unidades de cada producto hay en el ticket (se ve en el movil).
+  function renderQtyBadges() {
+    productGrid.querySelectorAll(".product-btn").forEach((btn) => {
+      const qty = state.cart[btn.dataset.name]?.qty || 0;
+      const badge = btn.querySelector(".qty-badge");
+      if (!badge) return;
+      badge.textContent = qty ? `×${qty}` : "";
+      btn.classList.toggle("in-ticket", qty > 0);
+    });
   }
 
   function renderProductGrid() {
@@ -1150,10 +1164,12 @@ function setupCaja() {
       const button = document.createElement("button");
       button.className = "product-btn";
       button.type = "button";
+      button.dataset.name = product.name;
       button.innerHTML = `
         <img src="${escapeHtml(getProductIcon(product))}" alt="${escapeHtml(product.name)}" />
         <strong>${escapeHtml(product.name)}</strong>
         <small>${fmtMoney(product.price)}</small>
+        <span class="qty-badge"></span>
       `;
       button.addEventListener("click", () => addItemDelta(product.name, product.price, +1));
       button.addEventListener("contextmenu", (ev) => {
@@ -1162,6 +1178,7 @@ function setupCaja() {
       });
       productGrid.appendChild(button);
     }
+    renderQtyBadges();
   }
 
   renderProductGrid();
@@ -2019,8 +2036,79 @@ function setupCrafteos() {
   refresh();
 }
 
+// ============================================================================
+// Vista movil: menu lateral con las secciones, lista de productos y barra del
+// ticket abajo. En PC estos elementos no se muestran.
+// ============================================================================
+function setupMobileNav() {
+  const drawer = byId("m-drawer");
+  const menuBtn = byId("m-menu-btn");
+  if (!drawer || !menuBtn) return;
+  const sectionsEl = byId("m-nav-sections");
+  const cajaPanel = byId("tab-caja");
+
+  const isCaja = () => cajaPanel.classList.contains("is-active");
+
+  function build() {
+    sectionsEl.textContent = "";
+    document.querySelectorAll("nav.tabs .tab").forEach((tab) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "m-nav-item" + (tab.classList.contains("is-active") ? " is-active" : "");
+      b.textContent = tab.textContent.trim();
+      b.addEventListener("click", () => {
+        close();
+        tab.click(); // misma logica (y contraseña) que en PC
+      });
+      sectionsEl.appendChild(b);
+    });
+  }
+
+  function open() {
+    build();
+    drawer.hidden = false;
+    menuBtn.setAttribute("aria-expanded", "true");
+    document.body.classList.add("m-drawer-open");
+    requestAnimationFrame(() => drawer.classList.add("is-open"));
+  }
+
+  function close() {
+    drawer.classList.remove("is-open");
+    menuBtn.setAttribute("aria-expanded", "false");
+    document.body.classList.remove("m-drawer-open");
+    setTimeout(() => {
+      if (!drawer.classList.contains("is-open")) drawer.hidden = true;
+    }, 220);
+  }
+
+  menuBtn.addEventListener("click", () => (drawer.hidden ? open() : close()));
+  drawer.addEventListener("click", (ev) => {
+    if (ev.target.closest("[data-close]")) close();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !drawer.hidden) close();
+  });
+
+  // La barra del ticket solo se ve en la Caja.
+  const syncSection = () => document.body.classList.toggle("is-caja", isCaja());
+  new MutationObserver(syncSection).observe(cajaPanel, { attributes: true, attributeFilter: ["class"] });
+  syncSection();
+
+  const bar = byId("m-ticket-bar");
+  bar?.addEventListener("click", () => {
+    document.querySelector("#tab-caja .ticket-card")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  });
+  document.addEventListener("badu-ticket", (ev) => {
+    const { units, total } = ev.detail || {};
+    byId("m-ticket-count").textContent = units ? `${units} ${units === 1 ? "producto" : "productos"}` : "Vacío";
+    byId("m-ticket-total").textContent = fmtMoney(total);
+    bar?.classList.toggle("has-items", units > 0);
+  });
+}
+
 setupCopyFallbackModal();
 setupTabs();
+setupMobileNav();
 setupCaja();
 setupContabilidad();
 setupCrafteos();

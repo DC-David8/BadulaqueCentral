@@ -581,3 +581,151 @@ button.danger {
   background: #0b0f16;
   padding: 6px;
 }
+
+/* ==========================================================================
+   Vista movil (pantallas de hasta 700px). En PC nada de esto se muestra.
+   ========================================================================== */
+.m-menu-btn, .m-ticket-bar, .m-drawer, .qty-badge { display: none; }
+
+@media (max-width: 700px) {
+  html, body { overflow-x: hidden; }
+
+  .app-shell { width: auto; margin: 0; padding: 0 12px 84px; }
+
+  /* Cabecera compacta y fija, con el boton del menu */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    align-items: center;
+    gap: 10px;
+    margin: 0 -12px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+    background: rgba(13, 17, 24, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar h1 { flex: 1; font-size: 1.15rem; }
+  .topbar p { display: none; }
+  .m-menu-btn {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    font-size: 1.35rem;
+    line-height: 1;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: #1a283c;
+    color: var(--text);
+  }
+
+  /* Las secciones pasan al menu */
+  nav.tabs { display: none; }
+
+  .card { padding: 10px; border-radius: 14px; }
+  .card-head-row h2 { font-size: 1.1rem; }
+  .card-head-row button { padding: 6px 10px; font-size: 0.78rem; }
+  .split { gap: 10px; }
+  .tab-panel > .split > .card:first-child { margin-top: 10px; }
+
+  /* Productos en lista: icono pequeno, nombre y precio en una fila */
+  .product-grid { grid-template-columns: 1fr !important; gap: 6px; margin-top: 8px; }
+  .product-btn {
+    min-height: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 10px;
+  }
+  .product-btn:hover { transform: none; }
+  .product-btn:active { background: #1a2f4a; }
+  .product-btn img { width: 34px; height: 34px; flex: none; border-radius: 8px; }
+  .product-btn strong { flex: 1; font-size: 0.92rem; font-weight: 600; line-height: 1.25; }
+  .product-btn small { flex: none; font-size: 0.9rem; font-weight: 700; color: #5cc0ff; }
+  .qty-badge {
+    display: inline-block;
+    flex: none;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: #04121f;
+    background: var(--accent);
+    border-radius: 999px;
+    padding: 0;
+  }
+  .qty-badge:empty { display: none; }
+  .product-btn.in-ticket .qty-badge { padding: 2px 7px; }
+  .product-btn.in-ticket { border-color: rgba(31, 157, 255, 0.6); }
+
+  /* Ticket: sin el logo grande; las acciones caben en dos filas */
+  .ticket-logo { display: none; }
+  .ticket-table-wrap { max-height: none; }
+  /* En el movil el ticket no muestra la columna Precio (el subtotal ya lo dice) */
+  .ticket-table-wrap th:nth-child(3), .ticket-table-wrap td:nth-child(3) { display: none; }
+  .ticket-table-wrap th, .ticket-table-wrap td { padding: 8px 6px; }
+  .ticket-table-wrap .qty-input { width: 52px; }
+  .ticket-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .ticket-actions button { padding: 9px 6px; font-size: 0.8rem; }
+
+  /* Barra del ticket abajo (solo en la Caja) */
+  body.is-caja .m-ticket-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    z-index: 55;
+    padding: 12px 16px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: #16263d;
+    color: var(--text);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  }
+  body.is-caja .m-ticket-bar.has-items { background: linear-gradient(90deg, var(--accent), #5cc0ff); color: #04121f; border-color: transparent; }
+  .m-ticket-label { font-weight: 800; }
+  .m-ticket-count { flex: 1; opacity: 0.85; font-size: 0.9rem; text-align: left; }
+  .m-ticket-bar strong { font-size: 1.05rem; }
+  body.m-drawer-open .m-ticket-bar { display: none; }
+
+  /* Menu lateral */
+  .m-drawer { display: block; position: fixed; inset: 0; z-index: 200; }
+  .m-drawer[hidden] { display: none; }
+  .m-drawer-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); opacity: 0; transition: opacity 0.2s; }
+  .m-drawer-panel {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(300px, 84vw);
+    overflow-y: auto;
+    padding: calc(12px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom));
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .m-drawer.is-open .m-drawer-backdrop { opacity: 1; }
+  .m-drawer.is-open .m-drawer-panel { transform: translateX(0); }
+  .m-drawer-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .m-drawer-head img { width: 36px; height: 36px; object-fit: contain; }
+  .m-drawer-head strong { flex: 1; }
+  .m-drawer-panel h3 { margin: 14px 4px 6px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .m-nav-list { display: grid; gap: 4px; }
+  .m-nav-item {
+    width: 100%;
+    text-align: left;
+    padding: 11px 12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .m-nav-item.is-active { background: #1f3658; border-color: rgba(31, 157, 255, 0.5); color: #5cc0ff; }
+}
