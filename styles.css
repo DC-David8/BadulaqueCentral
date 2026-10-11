@@ -61,9 +61,22 @@ body {
 
 .topbar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   padding: 10px 4px;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.topbar-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px rgba(31, 157, 255, 0.35));
 }
 
 .topbar h1 {
@@ -582,6 +595,9 @@ button.danger {
   padding: 6px;
 }
 
+/* Version de la pagina (pie) */
+.app-version { text-align: center; color: var(--muted); font-size: 0.75rem; margin: 18px 0 6px; opacity: 0.7; }
+
 /* ==========================================================================
    Vista movil (pantallas de hasta 700px). En PC nada de esto se muestra.
    ========================================================================== */
@@ -606,7 +622,9 @@ button.danger {
     -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
   }
-  .topbar h1 { flex: 1; font-size: 1.15rem; }
+  .topbar-brand { flex: 1; gap: 10px; }
+  .topbar-logo { width: 36px; height: 36px; }
+  .topbar h1 { font-size: 1.15rem; }
   .topbar p { display: none; }
   .m-menu-btn {
     display: grid;

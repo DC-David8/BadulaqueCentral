@@ -112,6 +112,8 @@ Para regenerar los iconos tras cambiar el logo, sustituye los PNG de `iconos/` m
 
 En el repositorio: **Settings → Pages → Build and deployment → Source: Deploy from a branch**, rama `main`, carpeta `/ (root)`. Cada cambio subido a `main` se publica en un par de minutos.
 
+Al publicar un cambio, sube el número de versión en `index.html`: el pie de página y el `?v=` de `styles.css` y `app.js`. Así los navegadores y la app del iPhone cargan la versión nueva sin Ctrl+F5.
+
 ## Personalizar
 
 - **Productos y precios fijos**: `app.js` → `PRODUCTS`. El icono es un PNG con el nombre indicado en `image`.
@@ -121,32 +123,37 @@ En el repositorio: **Settings → Pages → Build and deployment → Source: Dep
 
 ## Bitácora
 
-Cada cambio queda también detallado en el historial de commits.
+Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
-### 2026-10-11 · Logo al abrir la app del Inicio
+### Versión 7 · 11 de octubre de 2026 · Logo en la cabecera
+- Logo pequeño del Badulaque junto al nombre, en PC y en el móvil, como en Aguila Motors.
+- Pie de página con la versión y el último cambio (por ejemplo, «Versión 7 · Logo en la cabecera»).
+- Bitácora numerada por versiones.
+
+### Versión 6 · 11 de octubre de 2026 · Logo al abrir la app del Inicio
 - Al abrir la app desde la pantalla de Inicio, el logo se queda un momento en pantalla y se desvanece, como en Aguila Motors.
 - Es igual que la imagen de arranque del iPhone, así que el paso de una a otra no se nota. En Safari normal y en PC no aparece.
 
-### 2026-10-11 · Vista para móvil
+### Versión 5 · 11 de octubre de 2026 · Vista para móvil
 - Menú oculto (☰) con las secciones, productos en lista con iconos pequeños y contador de unidades, y barra del ticket abajo con el total.
 - Misma mejora que la versión 16 de Aguila Motors, con los colores del Badulaque.
 - En PC la página se ve igual que antes.
 
-### 2026-10-09 · Icono y pantalla de arranque en el iPhone
+### Versión 4 · 9 de octubre de 2026 · Icono y pantalla de arranque en el iPhone
 - Icono del Badulaque al anclar la web al Inicio (`apple-touch-icon` y manifiesto de app web).
 - Pantalla de arranque con el logo para cada tamaño de iPhone, del SE al 16 Pro Max.
 - Se abre a pantalla completa, sin la barra de Safari.
 
-### 2026-10-09 · README y bitácora
+### Versión 3 · 9 de octubre de 2026 · README y bitácora
 - Descripción completa del proyecto, tabla de productos y guía de contraseñas.
 - Las contraseñas ya no aparecen en los comentarios de `app.js`.
 
-### 2026-10-08 · Contraseñas separadas por sección
+### Versión 2 · 8 de octubre de 2026 · Contraseñas separadas por sección
 - **Arreglado:** tras meter una contraseña una vez, el resto de bloqueos se abrían pulsando Escape o Enter con el campo vacío (diálogo de acceso duplicado y código antiguo sin usar).
 - Contraseña propia para Facturas, Crafteos, Gestión de Productos y Gestión de empleados, guardada como huella SHA-256.
 - Gestión de Productos y Gestión de empleados se vuelven a bloquear al cerrar la ventana.
 
-### 2026-10-07 · Versión inicial
+### Versión 1 · 7 de octubre de 2026 · Versión inicial
 - Caja con los productos del Badulaque, incluida la Mochila de Outfits ($ 5.000, 20 suministros).
 - Procesado de facturas, Datáfono TPV y Rasca y Gana desde Discord, con Ver 50% y totales por empleado.
 - Gestión de Productos, Gestión de empleados y cálculo de suministros por crafteo.

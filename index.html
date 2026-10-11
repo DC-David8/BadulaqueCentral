@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=7" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
 
   <!-- App web (Inicio del iPhone / Android) -->
@@ -47,8 +47,13 @@
 
   <main class="app-shell">
     <header class="topbar">
-      <h1>Badulaque Central</h1>
-      <p>En Servicio</p>
+      <div class="topbar-brand">
+        <img src="badulaque_central_logo.png" alt="Badulaque Central" class="topbar-logo" />
+        <div>
+          <h1>Badulaque Central</h1>
+          <p>En Servicio</p>
+        </div>
+      </div>
       <button type="button" class="m-menu-btn" id="m-menu-btn" aria-label="Abrir menú" aria-expanded="false">☰</button>
     </header>
 
@@ -235,6 +240,8 @@
       <span class="m-ticket-count" id="m-ticket-count">Vacío</span>
       <strong id="m-ticket-total">$ 0</strong>
     </button>
+
+    <footer class="app-version">Versión 7 · Logo en la cabecera</footer>
   </main>
 
   <!-- Menu lateral del movil (en PC no se muestra) -->
@@ -441,6 +448,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
