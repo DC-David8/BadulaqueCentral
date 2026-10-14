@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="styles.css?v=9" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -99,6 +99,7 @@
               <strong id="ticket-total" class="lcd-total">$ 0</strong>
             </div>
           </div>
+          <p class="concept-info" id="ticket-concept-info" role="status"></p>
           <div class="table-wrap ticket-table-wrap">
             <table>
               <thead>
@@ -256,7 +257,7 @@
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
-    <footer class="app-version">Versión 8 · Terminal TPV</footer>
+    <footer class="app-version">Versión 9 · Concepto de 40 caracteres</footer>
   </main>
   </div>
 
@@ -318,6 +319,24 @@
           </table>
         </div>
       </section>
+    </form>
+  </dialog>
+
+  <dialog id="charges-modal">
+    <form method="dialog" class="modal-card">
+      <header class="modal-head">
+        <h3>Cobrar en varias veces</h3>
+        <button value="cancel" class="ghost">Cerrar</button>
+      </header>
+      <p class="muted">El concepto no cabe en los 40 caracteres del datáfono, ni abreviado. Pasa estos cobros uno tras otro, cada uno con su total y su concepto.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Cobro</th><th>Concepto</th><th class="num">Total</th><th class="num"></th></tr>
+          </thead>
+          <tbody id="charges-body"></tbody>
+        </table>
+      </div>
     </form>
   </dialog>
 
@@ -451,6 +470,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

@@ -240,9 +240,19 @@ button.small, .ghost.small { padding: 6px 10px; font-size: 13px; }
 .lcd-label { font-size: 26px; }
 .lcd-total { font-family: var(--f-lcd); font-weight: 400; font-size: 60px; line-height: 1; white-space: nowrap; text-shadow: 0 0 12px rgba(124, 255, 196, 0.45); }
 .lcd-last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lcd-total[data-size="m"] { font-size: 50px; }
+.lcd-total[data-size="s"] { font-size: 42px; }
+.lcd-total[data-size="xs"] { font-size: 34px; }
 .m-lcd { display: none; }
 
 /* --- Ticket ------------------------------------------------------------- */
+/* Concepto para el datafono (40 caracteres) */
+.concept-info { margin: -4px 2px 0; min-height: 1em; color: var(--muted); font: 500 12px var(--f-mono); }
+.concept-info.is-over { color: var(--warn); }
+#charges-modal .charge-concept { font: 600 13.5px var(--f-mono); }
+#charges-modal .charge-actions { white-space: nowrap; }
+#charges-modal .charge-actions button + button { margin-left: 6px; }
+
 .ticket-card { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 18px; }
 .table-wrap {
   overflow: auto;
@@ -474,6 +484,9 @@ dialog::backdrop { background: rgba(4, 6, 9, 0.75); }
   }
   .m-lcd .lcd-sub { display: flex; flex-direction: column; min-width: 0; font-size: 18px; line-height: 1.05; opacity: 0.85; }
   .m-lcd .lcd-total { font-size: 44px; }
+  .m-lcd .lcd-total[data-size="m"] { font-size: 38px; }
+  .m-lcd .lcd-total[data-size="s"] { font-size: 32px; }
+  .m-lcd .lcd-total[data-size="xs"] { font-size: 28px; }
   .ticket-lcd { display: none; }
 
   .split { gap: 14px; }

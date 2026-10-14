@@ -6,7 +6,7 @@ Funciona en el navegador (GitHub Pages) y también como programa de escritorio (
 
 ## Qué hace
 
-1. **Caja** · Teclas con los productos del Badulaque y un **buscador** arriba para encontrarlos al escribir. Clic izquierdo suma una unidad y clic derecho la resta. El **visor** verde del ticket muestra el último producto tocado y el total. El ticket permite cambiar la cantidad a mano, borrar líneas, **Deshacer**, **Quitar** la línea seleccionada y **Limpiar**. Con **Copiar total** y **Copiar concepto** (por ejemplo `x2 Cerveza x1 Pan`) se rellena la factura del juego sin escribir nada. No pide contraseña.
+1. **Caja** · Teclas con los productos del Badulaque y un **buscador** arriba para encontrarlos al escribir. Clic izquierdo suma una unidad y clic derecho la resta. El **visor** verde del ticket muestra el último producto tocado y el total. El ticket permite cambiar la cantidad a mano, borrar líneas, **Deshacer**, **Quitar** la línea seleccionada y **Limpiar**. Con **Copiar total** y **Concepto** se rellena el cobro del datáfono sin escribir nada; el concepto se ajusta solo a los 40 caracteres del datáfono (ver *Concepto para el datáfono*). No pide contraseña.
 2. **Gestión de Productos** · Botón **⚙ Productos** de la barra lateral (en el móvil, el botón de la Caja): añadir productos nuevos (nombre, precio, suministros por unidad e icono), editar el precio y los suministros de los productos fijos, y ocultarlos o restaurarlos. Si no subes imagen, se genera un icono con las iniciales.
 3. **Facturas / Rascas** · Pegas el texto copiado de Discord y pulsa **Procesar** (o **Pegar + Procesar**). Reconoce:
    - **Facturas**: `Nueva Factura` y `Factura Pagada`, unidas por su ID. Se separan en pagadas y pendientes.
@@ -17,6 +17,25 @@ Funciona en el navegador (GitHub Pages) y también como programa de escritorio (
 4. **Totales empleados** · Suma, por cada empleado registrado, sus facturas pagadas y sus rascas (respetando Ver 50%) y el **total banco**. **Copiar todo** genera la lista para Discord y menciona el rol configurado en quien más ha facturado; doble clic en una fila copia su total.
 5. **Gestión de empleados** · Alta y baja de empleados (nombre, apellido y rango). El nombre debe coincidir con el que sale en Discord (*Emitida por*, *Cobrador* o *Vendedor*).
 6. **Crafteos / Suministros** · Pegas el log de crafteo (`Nombre crafteó 5x Cerveza`) y calcula los **suministros gastados** por empleado y por producto. Avisa de los productos sin coste asignado. **Exportar CSV** descarga `crafteos_suministros.csv`.
+
+## Concepto para el datáfono
+
+El datáfono solo acepta **40 caracteres** de concepto. Debajo del visor del ticket se ve cuántos ocupa, y el botón **Concepto** elige solo:
+
+1. **Completo**, si cabe: `x2 Alitas x3 Cerveza`.
+2. **Abreviado**, si el completo no cabe. Los bocadillos se agrupan y se escribe «Boc» una sola vez al final: `2xAlitas+3xCerv, Bacon+2xLomo Boc`.
+3. **En varios cobros**, si ni abreviado cabe: se abre una ventana con cada cobro (total y concepto) para pasarlos por el datáfono uno tras otro. La suma de los cobros es el total del ticket.
+
+| Abreviatura | Producto |
+|---|---|
+| Bacon, Iber, Lomo, Tort, Veg + `Boc` | Bocadillo de Bacon, Ibérico, de Lomo, de Tortilla y Vegetal |
+| Cerv, CervMix, Cort, Cimarr, Graniz, Mich | Cerveza, Cerveza Mixta, Cortadito, Cimarrona, Granizado, Michelada |
+| Cola, Limon, Menu, Tlf, Tacos, SprayRem | Refresco de Cola, Refresco de Limón, Menú Badulaque, Teléfono, Tacos de Birria, Spray Remove |
+| Cachimba, Mochila | Recarga de Cachimba, Mochila de Outfits |
+| Alitas, Venda, Pan, Donas, Energy, Pizza, Spray, Vaper, Agua, Bayeta | Igual que el nombre |
+| `2x` delante | Cantidad (si es más de 1) |
+
+Los productos agregados desde Gestión de Productos usan su nombre completo. Las abreviaturas se cambian en `app.js` → `PRODUCT_SHORT`.
 
 ## Productos
 
@@ -131,6 +150,11 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 9 · 13 de octubre de 2026 · Concepto de 40 caracteres
+- **Concepto para el datáfono** (máximo 40 caracteres), igual que en Aguila Motors: se copia completo si cabe; si no, abreviado (`2xAlitas+3xCerv, Bacon+2xLomo Boc`); y si ni así cabe, se reparte en varios cobros con su total y su concepto.
+- Debajo del visor del ticket se ve cuántos caracteres ocupa el concepto.
+- El total del visor reduce la letra en importes largos (de $ 10.000 en adelante) para que siempre quepa.
 
 ### Versión 8 · 13 de octubre de 2026 · Terminal TPV
 - Nuevo diseño tipo caja registradora (la propuesta C): fondo grafito, teclas con relieve, cifras en monoespaciada y visor verde con el último producto y el total.

@@ -129,6 +129,46 @@ const PRODUCTS = [
   { name: "Mochila de Outfits", price: 5000, image: "mochila_de_outfits.png" },
 ];
 
+// ============================================================================
+// Concepto para el datafono (maximo 40 caracteres), igual que en Aguila Motors.
+// Si el concepto completo no cabe, se abrevia: "2xAlitas+3xCerv, Bacon+Lomo Boc".
+// [abreviatura, grupo]: el grupo (Boc = bocadillos) se escribe una vez al final.
+// Las claves van en minusculas y sin tildes.
+// ============================================================================
+const CONCEPT_MAX = 40;
+
+const PRODUCT_SHORT = {
+  "alitas": ["Alitas", ""],
+  "venda": ["Venda", ""],
+  "cerveza": ["Cerv", ""],
+  "bocadillo de bacon": ["Bacon", "Boc"],
+  "bocadillo iberico": ["Iber", "Boc"],
+  "bocadillo de lomo": ["Lomo", "Boc"],
+  "bocadillo de tortilla": ["Tort", "Boc"],
+  "bocadillo vegetal": ["Veg", "Boc"],
+  "pan": ["Pan", ""],
+  "cortadito": ["Cort", ""],
+  "cerveza mixta": ["CervMix", ""],
+  "cimarrona": ["Cimarr", ""],
+  "donas": ["Donas", ""],
+  "energy": ["Energy", ""],
+  "granizado": ["Graniz", ""],
+  "menu badulaque": ["Menu", ""],
+  "michelada": ["Mich", ""],
+  "telefono": ["Tlf", ""],
+  "pizza": ["Pizza", ""],
+  "refresco de cola": ["Cola", ""],
+  "refresco de limon": ["Limon", ""],
+  "spray": ["Spray", ""],
+  "spray remove": ["SprayRem", ""],
+  "tacos de birria": ["Tacos", ""],
+  "vaper": ["Vaper", ""],
+  "agua": ["Agua", ""],
+  "bayeta": ["Bayeta", ""],
+  "recarga de cachimba": ["Cachimba", ""],
+  "mochila de outfits": ["Mochila", ""],
+};
+
 const CRAFTEO_SUPPLIES = {
   venda: 10,
   cerveza: 2,
@@ -1152,7 +1192,140 @@ function setupCaja() {
     renderQtyBadges();
     const units = Object.values(state.cart).reduce((a, r) => a + (r.qty || 0), 0);
     renderLcd(units, total);
+    renderConceptInfo();
     document.dispatchEvent(new CustomEvent("badu-ticket", { detail: { units, total } }));
+  }
+
+  // --- Concepto para el datafono (40 caracteres) --------------------------
+  // Lineas del ticket en el orden de la Caja (los que ya no existen, al final).
+  function ticketItems() {
+    const items = [];
+    const seen = new Set();
+    const add = (name, row) => {
+      const [short, group] = PRODUCT_SHORT[normalizeKeySimple(name)] || [name, ""];
+      items.push({ name, qty: row.qty, price: row.price, short, group });
+      seen.add(name);
+    };
+    for (const p of getAllProducts()) {
+      const row = state.cart[p.name];
+      if (row?.qty > 0) add(p.name, row);
+    }
+    for (const [name, row] of Object.entries(state.cart)) {
+      if (!seen.has(name) && row?.qty > 0) add(name, row);
+    }
+    return items;
+  }
+
+  const fullConcept = (items) => items.map((it) => `x${it.qty} ${it.name}`).join(" ");
+
+  // "2xAlitas+3xCerv, Bacon+Lomo Boc": cada grupo se escribe una sola vez.
+  function shortConcept(items) {
+    const groups = new Map();
+    for (const it of items) {
+      const part = it.qty > 1 ? `${it.qty}x${it.short}` : it.short;
+      if (!groups.has(it.group)) groups.set(it.group, []);
+      groups.get(it.group).push(part);
+    }
+    return [...groups.entries()].map(([g, parts]) => parts.join("+") + (g ? ` ${g}` : "")).join(", ");
+  }
+
+  function mergeQty(list) {
+    const out = [];
+    for (const it of list) {
+      const prev = out.find((x) => x.name === it.name);
+      if (prev) prev.qty += it.qty;
+      else out.push({ ...it });
+    }
+    return out;
+  }
+
+  // Si ni abreviado cabe, se reparte en varios cobros que si caben.
+  function splitIntoCharges(items) {
+    const charges = [];
+    let current = [];
+    for (const it of items) {
+      for (let n = 0; n < it.qty; n++) {
+        const unit = { ...it, qty: 1 };
+        if (current.length && shortConcept(mergeQty([...current, unit])).length > CONCEPT_MAX) {
+          charges.push(mergeQty(current));
+          current = [unit];
+        } else {
+          current.push(unit);
+        }
+      }
+    }
+    if (current.length) charges.push(mergeQty(current));
+    return charges.map((list) => ({
+      concept: shortConcept(list),
+      total: list.reduce((a, it) => a + it.price * it.qty, 0),
+    }));
+  }
+
+  function conceptPlan() {
+    const items = ticketItems();
+    if (!items.length) return { kind: "empty" };
+    const full = fullConcept(items);
+    if (full.length <= CONCEPT_MAX) return { kind: "full", text: full };
+    const short = shortConcept(items);
+    if (short.length <= CONCEPT_MAX) return { kind: "short", text: short };
+    return { kind: "split", charges: splitIntoCharges(items) };
+  }
+
+  function renderConceptInfo() {
+    const el = byId("ticket-concept-info");
+    if (!el) return;
+    const plan = conceptPlan();
+    el.className = "concept-info";
+    el.title = "";
+    if (plan.kind === "empty") {
+      el.textContent = "";
+    } else if (plan.kind === "full") {
+      el.textContent = `Concepto: ${plan.text.length}/${CONCEPT_MAX} · completo`;
+      el.title = plan.text;
+    } else if (plan.kind === "short") {
+      el.textContent = `Concepto: ${plan.text.length}/${CONCEPT_MAX} · abreviado (el completo no cabe en el datáfono)`;
+      el.title = plan.text;
+    } else {
+      el.classList.add("is-over");
+      el.textContent = `No cabe en un cobro: se divide en ${plan.charges.length} cobros al copiar el concepto`;
+    }
+  }
+
+  function openChargesDialog(charges) {
+    const dlg = byId("charges-modal");
+    const body = byId("charges-body");
+    if (!dlg || !body) return;
+    body.innerHTML = "";
+    charges.forEach((c, i) => {
+      const tr = document.createElement("tr");
+      const tdN = document.createElement("td");
+      tdN.textContent = `${i + 1} de ${charges.length}`;
+      const tdC = document.createElement("td");
+      tdC.className = "charge-concept";
+      tdC.textContent = c.concept;
+      tdC.title = `${c.concept.length}/${CONCEPT_MAX} caracteres`;
+      const tdT = document.createElement("td");
+      tdT.className = "num";
+      tdT.textContent = fmtMoney(c.total);
+      const tdA = document.createElement("td");
+      tdA.className = "num charge-actions";
+      const mk = (label, text, cls) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = `small ${cls}`;
+        b.textContent = label;
+        b.addEventListener("click", async () => {
+          const ok = await copyText(text);
+          if (!ok) openCopyFallback(text);
+          tr.classList.add("is-selected");
+        });
+        return b;
+      };
+      tdA.append(mk("Copiar total", String(c.total), "primary"), mk("Copiar concepto", c.concept, ""));
+      tr.append(tdN, tdC, tdT, tdA);
+      body.appendChild(tr);
+    });
+    dlg.showModal();
   }
 
   // Visor: ultimo producto tocado y total (en PC dentro del ticket, en el movil arriba).
@@ -1164,6 +1337,10 @@ function setupCaja() {
     document.querySelectorAll(".lcd-last-price").forEach((el) => (el.textContent = lastPrice));
     document.querySelectorAll(".lcd-units").forEach((el) => (el.textContent = `${units} ${units === 1 ? "ARTÍCULO" : "ARTÍCULOS"}`));
     document.querySelectorAll(".m-lcd .lcd-total").forEach((el) => (el.textContent = fmtMoney(total)));
+    // Importes largos ($ 16.000, $ 150.000) con letra mas pequena para que quepan en el visor.
+    const len = fmtMoney(total).length;
+    const size = len <= 7 ? "l" : len <= 8 ? "m" : len <= 9 ? "s" : "xs";
+    document.querySelectorAll(".lcd .lcd-total").forEach((el) => (el.dataset.size = size));
   }
 
   // Buscador: oculta las teclas que no coinciden con lo escrito.
@@ -1271,27 +1448,19 @@ function setupCaja() {
     if (!ok) openCopyFallback(String(total));
   });
 
+  // Lo que copia "Concepto": completo si cabe; si no, abreviado; si no, en cobros.
   byId("btn-copy-concept").addEventListener("click", async () => {
-    const parts = [];
-    const allProducts = getAllProducts();
-    const inProducts = new Set(allProducts.map((p) => p.name));
-
-    for (const p of allProducts) {
-      const row = state.cart[p.name];
-      if (row?.qty > 0) parts.push(`x${row.qty} ${p.name}`);
-    }
-
-    for (const [name, row] of Object.entries(state.cart)) {
-      if (!inProducts.has(name) && row?.qty > 0) parts.push(`x${row.qty} ${name}`);
-    }
-
-    const concept = parts.join(" ").trim();
-    if (!concept) {
+    const plan = conceptPlan();
+    if (plan.kind === "empty") {
       alert("El ticket esta vacio.");
       return;
     }
-    const ok = await copyText(concept);
-    if (!ok) openCopyFallback(concept);
+    if (plan.kind === "split") {
+      openChargesDialog(plan.charges);
+      return;
+    }
+    const ok = await copyText(plan.text);
+    if (!ok) openCopyFallback(plan.text);
   });
 
   renderTicket();
