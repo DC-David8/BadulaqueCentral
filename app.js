@@ -9,18 +9,19 @@
 //   1. Abre la pagina en el navegador, pulsa F12 -> pestaña "Consola".
 //   2. Escribe:  await baduHash("tu_nueva_clave")   y pulsa Enter.
 //   3. Copia el texto que sale y pegalo en la zona que quieras de abajo.
-// Si dos zonas tienen la misma huella, comparten contraseña.
+// Si dos zonas tienen la misma huella, comparten contraseña: Facturas y
+// Crafteos usan la de gerencia; Productos y Empleados, la de jefe.
 // ============================================================================
 const PASSWORD_SALT = "badulaque-central:";
 const PASSWORD_HASHES = {
   // Pestaña "Facturas / Rascas" (incluye Ver 50% y Totales empleados)
-  facturas: "a4fe25703d42698a827a9cd17dd1188816815b17acbd993cf6d8e00c9ea47f90",
+  facturas: "cb71ca1470c6a2d157fe7afb1c5ea0001baba5410f714a00ff762078071ee3a9",
   // Pestaña "Crafteos / Suministros"
-  crafteos: "a4fe25703d42698a827a9cd17dd1188816815b17acbd993cf6d8e00c9ea47f90",
+  crafteos: "cb71ca1470c6a2d157fe7afb1c5ea0001baba5410f714a00ff762078071ee3a9",
   // "Gestion de Productos" (precios, suministros, quitar productos)
-  productos: "90eccde9a19cf1774a195275bd98980033549798875958431524785ecbce54dd",
+  productos: "36e9c1f5277f70721e0b9566188e05c00b752bdb10754d90d01017500052ad29",
   // "Gestion empleados" (añadir / eliminar empleados)
-  empleados: "90eccde9a19cf1774a195275bd98980033549798875958431524785ecbce54dd",
+  empleados: "36e9c1f5277f70721e0b9566188e05c00b752bdb10754d90d01017500052ad29",
 };
 
 // SHA-256 en JS puro, por si crypto.subtle no esta disponible (pagina servida

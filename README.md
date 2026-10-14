@@ -151,6 +151,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 10 · 13 de octubre de 2026 · Contraseñas nuevas
+- Contraseñas nuevas y más largas: una para gerencia (Facturas y Crafteos) y otra para jefe (Gestión de Productos y Gestión de empleados). Las antiguas dejan de funcionar.
+- En el código solo está su huella SHA-256; las contraseñas no aparecen ni en el código ni en el historial.
+
 ### Versión 9 · 13 de octubre de 2026 · Concepto de 40 caracteres
 - **Concepto para el datáfono** (máximo 40 caracteres), igual que en Aguila Motors: se copia completo si cabe; si no, abreviado (`2xAlitas+3xCerv, Bacon+2xLomo Boc`); y si ni así cabe, se reparte en varios cobros con su total y su concepto.
 - Debajo del visor del ticket se ve cuántos caracteres ocupa el concepto.
