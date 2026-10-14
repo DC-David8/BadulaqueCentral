@@ -311,8 +311,10 @@ function parseMoney(raw) {
   return Number(String(raw).replace(/[.,]/g, "")) || 0;
 }
 
+// Importe con punto de miles siempre: "$ 1.000", "$ 25.000".
 function fmtMoney(n) {
-  return `$ ${Number(n || 0).toLocaleString("es-ES")}`;
+  const v = Math.trunc(Number(n) || 0);
+  return `$ ${String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
 }
 
 function fmtMoneyPlain(n) {
@@ -1061,9 +1063,12 @@ function setupCaja() {
     cart: {},
     history: [],
     selected: null,
+    last: null, // ultimo producto tocado, para el visor: { name, delta, price }
   };
 
   const productGrid = byId("product-grid");
+  const searchInput = byId("product-search");
+  const productCount = byId("product-count");
   const ticketBody = byId("ticket-body");
   const ticketTotal = byId("ticket-total");
 
@@ -1078,6 +1083,7 @@ function setupCaja() {
       else row.qty = next;
     }
     state.history.push([name, delta]);
+    state.last = { name, delta, price };
     renderTicket();
   }
 
@@ -1087,6 +1093,7 @@ function setupCaja() {
     for (const [name, row] of Object.entries(state.cart)) {
       const tr = document.createElement("tr");
       if (state.selected === name) tr.classList.add("is-selected");
+      else if (state.last?.name === name) tr.classList.add("is-last");
       tr.addEventListener("click", (ev) => {
         if (ev.target?.closest?.("input, button")) return;
         state.selected = name;
@@ -1144,7 +1151,43 @@ function setupCaja() {
     ticketTotal.textContent = fmtMoney(total);
     renderQtyBadges();
     const units = Object.values(state.cart).reduce((a, r) => a + (r.qty || 0), 0);
+    renderLcd(units, total);
     document.dispatchEvent(new CustomEvent("badu-ticket", { detail: { units, total } }));
+  }
+
+  // Visor: ultimo producto tocado y total (en PC dentro del ticket, en el movil arriba).
+  function renderLcd(units, total) {
+    const last = state.last;
+    const lastText = !units ? "LISTO" : last ? `${last.delta > 0 ? "+" : "−"}${Math.abs(last.delta)} ${last.name.toUpperCase()}` : "TICKET";
+    const lastPrice = units && last ? fmtMoney(last.price * Math.abs(last.delta)) : "";
+    document.querySelectorAll(".lcd-last").forEach((el) => (el.textContent = lastText));
+    document.querySelectorAll(".lcd-last-price").forEach((el) => (el.textContent = lastPrice));
+    document.querySelectorAll(".lcd-units").forEach((el) => (el.textContent = `${units} ${units === 1 ? "ARTÍCULO" : "ARTÍCULOS"}`));
+    document.querySelectorAll(".m-lcd .lcd-total").forEach((el) => (el.textContent = fmtMoney(total)));
+  }
+
+  // Buscador: oculta las teclas que no coinciden con lo escrito.
+  function applySearch() {
+    const q = normalizeKeySimple(searchInput?.value || "");
+    let shown = 0;
+    productGrid.querySelectorAll(".product-btn").forEach((btn) => {
+      const ok = !q || normalizeKeySimple(btn.dataset.name || "").includes(q);
+      btn.hidden = !ok;
+      if (ok) shown++;
+    });
+    let empty = productGrid.querySelector(".no-results");
+    if (!shown) {
+      if (!empty) {
+        empty = document.createElement("p");
+        empty.className = "no-results";
+        productGrid.appendChild(empty);
+      }
+      empty.textContent = `Ningún producto coincide con "${searchInput.value.trim()}".`;
+    } else if (empty) {
+      empty.remove();
+    }
+    const all = productGrid.querySelectorAll(".product-btn").length;
+    if (productCount) productCount.textContent = q ? `${shown} de ${all}` : `${all} productos`;
   }
 
   // Cuantas unidades de cada producto hay en el ticket (se ve en el movil).
@@ -1179,7 +1222,16 @@ function setupCaja() {
       productGrid.appendChild(button);
     }
     renderQtyBadges();
+    applySearch();
   }
+
+  searchInput?.addEventListener("input", applySearch);
+  searchInput?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      searchInput.value = "";
+      applySearch();
+    }
+  });
 
   renderProductGrid();
 
@@ -1209,6 +1261,7 @@ function setupCaja() {
     state.cart = {};
     state.history = [];
     state.selected = null;
+    state.last = null;
     renderTicket();
   });
 
@@ -2037,72 +2090,32 @@ function setupCrafteos() {
 }
 
 // ============================================================================
-// Vista movil: menu lateral con las secciones, lista de productos y barra del
-// ticket abajo. En PC estos elementos no se muestran.
+// Estructura: en PC barra lateral; en el movil la misma barra va abajo, con el
+// visor arriba y los botones "Copiar total" / "Ver ticket" fijos en la Caja.
 // ============================================================================
-function setupMobileNav() {
-  const drawer = byId("m-drawer");
-  const menuBtn = byId("m-menu-btn");
-  if (!drawer || !menuBtn) return;
-  const sectionsEl = byId("m-nav-sections");
+function setupLayout() {
   const cajaPanel = byId("tab-caja");
-
   const isCaja = () => cajaPanel.classList.contains("is-active");
 
-  function build() {
-    sectionsEl.textContent = "";
-    document.querySelectorAll("nav.tabs .tab").forEach((tab) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "m-nav-item" + (tab.classList.contains("is-active") ? " is-active" : "");
-      b.textContent = tab.textContent.trim();
-      b.addEventListener("click", () => {
-        close();
-        tab.click(); // misma logica (y contraseña) que en PC
-      });
-      sectionsEl.appendChild(b);
-    });
-  }
-
-  function open() {
-    build();
-    drawer.hidden = false;
-    menuBtn.setAttribute("aria-expanded", "true");
-    document.body.classList.add("m-drawer-open");
-    requestAnimationFrame(() => drawer.classList.add("is-open"));
-  }
-
-  function close() {
-    drawer.classList.remove("is-open");
-    menuBtn.setAttribute("aria-expanded", "false");
-    document.body.classList.remove("m-drawer-open");
-    setTimeout(() => {
-      if (!drawer.classList.contains("is-open")) drawer.hidden = true;
-    }, 220);
-  }
-
-  menuBtn.addEventListener("click", () => (drawer.hidden ? open() : close()));
-  drawer.addEventListener("click", (ev) => {
-    if (ev.target.closest("[data-close]")) close();
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !drawer.hidden) close();
-  });
-
-  // La barra del ticket solo se ve en la Caja.
+  // El buscador y los botones fijos solo se ven en la Caja.
   const syncSection = () => document.body.classList.toggle("is-caja", isCaja());
   new MutationObserver(syncSection).observe(cajaPanel, { attributes: true, attributeFilter: ["class"] });
   syncSection();
 
-  const bar = byId("m-ticket-bar");
-  bar?.addEventListener("click", () => {
+  // Boton "Productos" de la barra lateral = Gestion de Productos.
+  byId("rail-products")?.addEventListener("click", () => {
+    if (!isCaja()) document.querySelector('.tab[data-tab-target="tab-caja"]')?.click();
+    byId("btn-add-product")?.click();
+  });
+
+  byId("m-copy-total")?.addEventListener("click", () => byId("btn-copy-total")?.click());
+  byId("m-view-ticket")?.addEventListener("click", () => {
     document.querySelector("#tab-caja .ticket-card")?.scrollIntoView({ block: "start", behavior: "smooth" });
   });
   document.addEventListener("badu-ticket", (ev) => {
-    const { units, total } = ev.detail || {};
-    byId("m-ticket-count").textContent = units ? `${units} ${units === 1 ? "producto" : "productos"}` : "Vacío";
-    byId("m-ticket-total").textContent = fmtMoney(total);
-    bar?.classList.toggle("has-items", units > 0);
+    const { units } = ev.detail || {};
+    const el = byId("m-ticket-count");
+    if (el) el.textContent = `(${units || 0})`;
   });
 }
 
@@ -2117,7 +2130,7 @@ function setupMobileNav() {
 
 setupCopyFallbackModal();
 setupTabs();
-setupMobileNav();
+setupLayout();
 setupCaja();
 setupContabilidad();
 setupCrafteos();

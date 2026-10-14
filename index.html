@@ -4,8 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=8" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600;700&family=VT323&display=swap" />
 
   <!-- App web (Inicio del iPhone / Android) -->
   <link rel="manifest" href="manifest.webmanifest" />
@@ -14,7 +17,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Badulaque" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-  <meta name="theme-color" content="#0d1118" />
+  <meta name="theme-color" content="#0e1013" />
 
   <!-- Pantalla de arranque del iPhone (una imagen por tamaño de pantalla) -->
   <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="iconos/splash-1320x2868.png" />
@@ -42,39 +45,60 @@
   <div id="app-splash" class="app-splash" aria-hidden="true">
     <div class="app-splash-card"><img src="badulaque_central_logo.png" alt="" /></div>
   </div>
-  <div class="bg-shape bg-shape-a"></div>
-  <div class="bg-shape bg-shape-b"></div>
+  <div class="app-layout">
+  <!-- Barra lateral en PC; en el movil pasa a ser la barra de secciones de abajo -->
+  <aside class="rail">
+    <img src="badulaque_central_logo.png" alt="Badulaque Central" class="rail-logo" />
+    <nav class="tabs" aria-label="Secciones">
+      <button type="button" class="tab is-active" data-tab-target="tab-caja"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10M12 16v4"/></svg><span>Caja</span></button>
+      <button type="button" class="tab" data-tab-target="tab-conta"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><path d="M9 13h8M9 17h6"/></svg><span>Facturas</span><svg class="tab-lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
+      <button type="button" class="tab" data-tab-target="tab-craft"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4l6 6-9 9H5v-6z"/><path d="M12 6l6 6"/></svg><span>Crafteos</span><svg class="tab-lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
+    </nav>
+    <button type="button" class="rail-btn" id="rail-products" title="Gestión de Productos"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z"/></svg><span>Productos</span></button>
+  </aside>
 
   <main class="app-shell">
     <header class="topbar">
-      <div class="topbar-brand">
-        <img src="badulaque_central_logo.png" alt="Badulaque Central" class="topbar-logo" />
-        <div>
-          <h1>Badulaque Central</h1>
-          <p>En Servicio</p>
-        </div>
-      </div>
-      <button type="button" class="m-menu-btn" id="m-menu-btn" aria-label="Abrir menú" aria-expanded="false">☰</button>
+      <img src="badulaque_central_logo.png" alt="" class="topbar-logo" />
+      <h1>Badulaque Central</h1>
+      <span class="status-badge"><span class="status-dot"></span>EN SERVICIO</span>
+      <label class="topbar-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input type="search" id="product-search" placeholder="Buscar producto" aria-label="Buscar producto" autocomplete="off" />
+      </label>
     </header>
 
-    <nav class="tabs" aria-label="Secciones">
-      <button class="tab is-active" data-tab-target="tab-caja">Caja</button>
-      <button class="tab" data-tab-target="tab-conta">Facturas / Rascas</button>
-      <button class="tab" data-tab-target="tab-craft">Crafteos / Suministros</button>
-    </nav>
+    <!-- Visor del movil (en PC esta dentro del ticket) -->
+    <div class="lcd m-lcd" id="m-lcd" aria-live="polite">
+      <div class="lcd-sub">
+        <span class="lcd-last">LISTO</span>
+        <span class="lcd-units">0 ARTÍCULOS</span>
+      </div>
+      <span class="lcd-total">$ 0</span>
+    </div>
 
     <section id="tab-caja" class="tab-panel is-active">
       <div class="split">
         <section class="card">
           <div class="card-head-row">
             <h2>Productos</h2>
+            <span class="muted product-count" id="product-count"></span>
             <button type="button" id="btn-add-product" class="ghost small">Gestión de Productos</button>
           </div>
           <div id="product-grid" class="product-grid"></div>
         </section>
 
         <section class="card ticket-card">
-          <h2>Ticket</h2>
+          <div class="lcd ticket-lcd" aria-live="polite">
+            <div class="lcd-row">
+              <span class="lcd-last">LISTO</span>
+              <span class="lcd-last-price"></span>
+            </div>
+            <div class="lcd-row lcd-main">
+              <span class="lcd-label">TOTAL</span>
+              <strong id="ticket-total" class="lcd-total">$ 0</strong>
+            </div>
+          </div>
           <div class="table-wrap ticket-table-wrap">
             <table>
               <thead>
@@ -90,21 +114,12 @@
             </table>
           </div>
 
-          <div class="kpi-line">
-            <span>Total</span>
-            <strong id="ticket-total">$ 0</strong>
-          </div>
-
-          <div class="actions ticket-actions">
-            <button id="btn-undo">Deshacer</button>
-            <button id="btn-remove">Quitar</button>
-            <button id="btn-clear">Limpiar</button>
-            <button id="btn-copy-total">Copiar total</button>
-            <button id="btn-copy-concept">Copiar concepto</button>
-          </div>
-
-          <div class="ticket-logo">
-            <img src="badulaque_central_logo.png" alt="Badulaque Central" />
+          <div class="ticket-actions">
+            <button type="button" id="btn-undo">Deshacer</button>
+            <button type="button" id="btn-remove">Quitar</button>
+            <button type="button" id="btn-clear" class="danger">Limpiar</button>
+            <button type="button" id="btn-copy-total" class="primary key-wide">Copiar total</button>
+            <button type="button" id="btn-copy-concept" class="light">Concepto</button>
           </div>
         </section>
       </div>
@@ -117,7 +132,7 @@
           <textarea id="conta-input" rows="14" placeholder="Pega aqui el texto y pulsa Procesar"></textarea>
           <div class="actions">
             <button id="conta-paste">Pegar + Procesar</button>
-            <button id="conta-process">Procesar</button>
+            <button class="primary" id="conta-process">Procesar</button>
             <button id="conta-clear">Limpiar</button>
             <button id="conta-export">Exportar CSV</button>
           </div>
@@ -192,7 +207,7 @@
           <textarea id="craft-input" rows="14" placeholder="Pega aqui el log y pulsa Procesar"></textarea>
           <div class="actions">
             <button id="craft-paste">Pegar + Procesar</button>
-            <button id="craft-process">Procesar</button>
+            <button class="primary" id="craft-process">Procesar</button>
             <button id="craft-clear">Limpiar</button>
             <button id="craft-export">Exportar CSV</button>
           </div>
@@ -235,28 +250,16 @@
       </div>
     </section>
 
-    <button type="button" class="m-ticket-bar" id="m-ticket-bar" aria-label="Ver el ticket">
-      <span class="m-ticket-label">Ticket</span>
-      <span class="m-ticket-count" id="m-ticket-count">Vacío</span>
-      <strong id="m-ticket-total">$ 0</strong>
-    </button>
+    <!-- Botones fijos de la Caja en el movil -->
+    <div class="m-actions" id="m-actions">
+      <button type="button" class="primary" id="m-copy-total">Copiar total</button>
+      <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
+    </div>
 
-    <footer class="app-version">Versión 7 · Logo en la cabecera</footer>
+    <footer class="app-version">Versión 8 · Terminal TPV</footer>
   </main>
-
-  <!-- Menu lateral del movil (en PC no se muestra) -->
-  <div class="m-drawer" id="m-drawer" hidden>
-    <div class="m-drawer-backdrop" data-close="1"></div>
-    <nav class="m-drawer-panel" aria-label="Menú">
-      <div class="m-drawer-head">
-        <img src="badulaque_central_logo.png" alt="" />
-        <strong>Badulaque Central</strong>
-        <button type="button" class="ghost small" data-close="1" aria-label="Cerrar menú">✕</button>
-      </div>
-      <h3>Secciones</h3>
-      <div class="m-nav-list" id="m-nav-sections"></div>
-    </nav>
   </div>
+
 
   <dialog id="add-product-modal">
     <form method="dialog" class="modal-card">
@@ -290,7 +293,7 @@
         <p class="error-text" id="prod-new-error" role="alert" aria-live="polite"></p>
 
         <footer class="actions">
-          <button type="button" id="prod-new-save">Guardar producto</button>
+          <button class="primary" type="button" id="prod-new-save">Guardar producto</button>
           <button type="button" id="prod-new-cancel-edit" class="ghost" style="display:none;">Cancelar edición</button>
         </footer>
       </section>
@@ -362,7 +365,7 @@
           <div class="form-row">
             <label for="emp-admin-pass">Contrasena</label>
             <input id="emp-admin-pass" class="text-input" type="password" placeholder="••••••••" autocomplete="current-password" />
-            <button type="button" id="emp-admin-unlock">Desbloquear</button>
+            <button class="primary" type="button" id="emp-admin-unlock">Desbloquear</button>
           </div>
           <p class="muted" id="emp-admin-status">Bloqueado</p>
         </div>
@@ -375,7 +378,7 @@
             <input id="emp-new-rank" class="text-input" type="text" placeholder="Rango (opcional)" />
           </div>
           <div class="actions">
-            <button type="button" id="emp-new-add">Añadir</button>
+            <button class="primary" type="button" id="emp-new-add">Añadir</button>
           </div>
           <p class="muted" id="emp-new-hint">Tip: usa el mismo nombre y apellido que sale en Discord (Emitida por / Vendedor).</p>
         </div>
@@ -423,7 +426,7 @@
       <p class="error-text" id="access-error" role="alert" aria-live="polite"></p>
 
       <footer class="actions">
-        <button type="button" id="access-ok">Entrar</button>
+        <button class="primary" type="button" id="access-ok">Entrar</button>
         <button type="button" id="access-cancel-2" class="ghost">Cancelar</button>
       </footer>
     </div>
@@ -448,6 +451,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

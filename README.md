@@ -6,8 +6,8 @@ Funciona en el navegador (GitHub Pages) y también como programa de escritorio (
 
 ## Qué hace
 
-1. **Caja** · Cuadrícula con los productos del Badulaque. Clic izquierdo suma una unidad y clic derecho la resta. El ticket permite cambiar la cantidad a mano, borrar líneas, **Deshacer**, **Quitar** la línea seleccionada y **Limpiar**. Con **Copiar total** y **Copiar concepto** (por ejemplo `x2 Cerveza x1 Pan`) se rellena la factura del juego sin escribir nada. No pide contraseña.
-2. **Gestión de Productos** · Desde la Caja: añadir productos nuevos (nombre, precio, suministros por unidad e icono), editar el precio y los suministros de los productos fijos, y ocultarlos o restaurarlos. Si no subes imagen, se genera un icono con las iniciales.
+1. **Caja** · Teclas con los productos del Badulaque y un **buscador** arriba para encontrarlos al escribir. Clic izquierdo suma una unidad y clic derecho la resta. El **visor** verde del ticket muestra el último producto tocado y el total. El ticket permite cambiar la cantidad a mano, borrar líneas, **Deshacer**, **Quitar** la línea seleccionada y **Limpiar**. Con **Copiar total** y **Copiar concepto** (por ejemplo `x2 Cerveza x1 Pan`) se rellena la factura del juego sin escribir nada. No pide contraseña.
+2. **Gestión de Productos** · Botón **⚙ Productos** de la barra lateral (en el móvil, el botón de la Caja): añadir productos nuevos (nombre, precio, suministros por unidad e icono), editar el precio y los suministros de los productos fijos, y ocultarlos o restaurarlos. Si no subes imagen, se genera un icono con las iniciales.
 3. **Facturas / Rascas** · Pegas el texto copiado de Discord y pulsa **Procesar** (o **Pegar + Procesar**). Reconoce:
    - **Facturas**: `Nueva Factura` y `Factura Pagada`, unidas por su ID. Se separan en pagadas y pendientes.
    - **Datáfono TPV**: recibos con importe, cobrador, cliente, concepto y AUT. Cuentan siempre como pagados, y los de **otros comercios se ignoran** (se indica cuántos al pie).
@@ -91,14 +91,21 @@ No necesita servidor ni dependencias: es HTML, CSS y JavaScript puros.
 
 **Versión de escritorio:** el `.exe` carga la misma web. Ahí los empleados se guardan en el programa de Python; en la web, en el navegador.
 
-## Vista para móvil
+## Diseño "Terminal TPV"
 
-En pantallas pequeñas (móvil o app de la pantalla de Inicio) la página cambia sola; en PC se ve igual que siempre:
+La página imita una caja registradora: fondo grafito, botones con relieve tipo tecla, cifras en letra monoespaciada y un visor verde con el total.
 
-- Cabecera compacta con un botón **☰** que abre un menú lateral con las secciones (Caja, Facturas / Rascas y Crafteos / Suministros). Las secciones con contraseña la siguen pidiendo.
-- Los productos se ven en **lista**: icono pequeño, nombre y precio en una fila, y un contador (×2) en los que ya están en el ticket.
-- Una barra abajo muestra cuántos productos y el total del ticket; al tocarla baja hasta el ticket.
-- En el ticket del móvil no sale la columna Precio (el subtotal ya lo incluye) ni el logo grande.
+**En PC:**
+- Barra lateral con las secciones (Caja, Facturas y Crafteos; el candado indica que piden contraseña) y el botón **⚙ Productos** para la Gestión de Productos.
+- Productos en teclas compactas con icono, nombre, precio y contador (×2) de las unidades que ya están en el ticket.
+- Ticket con el visor arriba (último producto tocado y total), la lista y las teclas Deshacer, Quitar, Limpiar, **Copiar total** y Concepto.
+
+**En el móvil (pantallas de hasta 700px):**
+- Visor fijo arriba con el último producto, los artículos y el total.
+- Teclas de producto en dos columnas.
+- Botones fijos **Copiar total** y **Ver ticket (n)** sobre la barra de secciones, que pasa abajo como en una app.
+
+Los importes se muestran con punto de miles (`$ 1.000`). Lo que se copia para el juego (Copiar total) sigue siendo el número sin puntos.
 
 ## App en el iPhone
 
@@ -124,6 +131,14 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 8 · 13 de octubre de 2026 · Terminal TPV
+- Nuevo diseño tipo caja registradora (la propuesta C): fondo grafito, teclas con relieve, cifras en monoespaciada y visor verde con el último producto y el total.
+- PC: barra lateral con las secciones y el botón ⚙ Productos; productos en teclas compactas.
+- Móvil: visor fijo arriba, teclas en dos columnas, botones Copiar total y Ver ticket, y barra de secciones abajo (sustituye al menú ☰).
+- Buscador de productos en la Caja.
+- Importes con punto de miles (`$ 1.000`); el total copiado para el juego no cambia.
+- Facturas, Crafteos y las ventanas con el mismo estilo; el total general se ve como visor.
 
 ### Versión 7 · 11 de octubre de 2026 · Logo en la cabecera
 - Logo pequeño del Badulaque junto al nombre, en PC y en el móvil, como en Aguila Motors.
