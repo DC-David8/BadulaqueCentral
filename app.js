@@ -305,6 +305,10 @@ async function listEmployees() {
   return loadEmployeesLocal();
 }
 
+// El programa de escritorio (.exe) recibe su propia clave al guardar empleados.
+// Se mantiene la antigua para que siga funcionando; la nueva se valida aqui.
+const BACKEND_LEGACY_PASSWORD = "0000";
+
 async function addEmployee(payload, password) {
   if (!(await verifyPassword("empleados", password))) {
     throw new Error("Contraseña incorrecta");
@@ -312,7 +316,7 @@ async function addEmployee(payload, password) {
 
   const api = await waitPyApi();
   if (api && typeof api.emp_add === "function") {
-    await api.emp_add(payload, password);
+    await api.emp_add(payload, BACKEND_LEGACY_PASSWORD);
     return true;
   }
 
@@ -329,7 +333,7 @@ async function deleteEmployee(id, password) {
 
   const api = await waitPyApi();
   if (api && typeof api.emp_delete === "function") {
-    await api.emp_delete(id, password);
+    await api.emp_delete(id, BACKEND_LEGACY_PASSWORD);
     return true;
   }
 
@@ -338,6 +342,120 @@ async function deleteEmployee(id, password) {
   saveEmployeesLocal(next);
   return true;
 }
+
+// Cambiar el rango de un empleado. El programa de escritorio no tiene una
+// funcion para editar, asi que alli se borra y se vuelve a anadir con el
+// rango nuevo (el resto de datos se guarda por nombre, asi que no se pierde).
+async function updateEmployee(id, payload, password) {
+  if (!(await verifyPassword("empleados", password))) {
+    throw new Error("Contraseña incorrecta");
+  }
+
+  const api = await waitPyApi();
+  if (api && typeof api.emp_update === "function") {
+    await api.emp_update(id, payload, BACKEND_LEGACY_PASSWORD);
+    return true;
+  }
+  if (api && typeof api.emp_add === "function" && typeof api.emp_delete === "function") {
+    const list = await listEmployees();
+    const existing = list.find((e) => String(e.id) === String(id));
+    if (!existing) throw new Error("Empleado no encontrado");
+    const merged = { name: existing.name, surname: existing.surname, rank: existing.rank || "", ...payload };
+    await api.emp_delete(id, BACKEND_LEGACY_PASSWORD);
+    await api.emp_add(merged, BACKEND_LEGACY_PASSWORD);
+    return true;
+  }
+
+  const current = loadEmployeesLocal();
+  const idx = current.findIndex((e) => String(e.id) === String(id));
+  if (idx === -1) throw new Error("Empleado no encontrado");
+  current[idx] = { ...current[idx], ...payload };
+  saveEmployeesLocal(current);
+  return true;
+}
+
+// ============================================================================
+// Rangos y comision (% de lo cobrado: facturas pagadas + rascas)
+// ============================================================================
+const RANKS = [
+  { label: "En Pruebas", pct: 0.35 },
+  { label: "Cajero", pct: 0.40 },
+  { label: "Cajero Experimentado", pct: 0.45 },
+  { label: "Encargado", pct: 0.50 },
+  { label: "Jefe", pct: 0.50 },
+  { label: "Jefe Tribal", pct: 0.50 },
+];
+
+function pctForRank(rank) {
+  const key = normalizeKeySimple(String(rank || ""));
+  const found = RANKS.find((r) => normalizeKeySimple(r.label) === key);
+  return found ? found.pct : 0;
+}
+
+const pctText = (pct) => `${Math.round(pct * 100)}%`;
+
+function fullName(e) {
+  return `${String(e?.name || "").trim()} ${String(e?.surname || "").trim()}`.replace(/\s+/g, " ").trim();
+}
+
+// Rol de Discord del empleado de la semana (quien mas cobra).
+const EMPLOYEE_OF_WEEK_TAG = "<@&1364707155130712195>";
+
+// Discord, IBAN y "No cobra" de cada empleado: se guardan por nombre completo,
+// en el navegador, porque el programa de escritorio solo guarda nombre,
+// apellido y rango.
+function loadMap(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMap(key, map) {
+  try {
+    localStorage.setItem(key, JSON.stringify(map || {}));
+  } catch {
+    // sin almacenamiento
+  }
+}
+
+function setInMap(key, fullNameStr, value) {
+  const map = loadMap(key);
+  const k = normalizeKeySimple(fullNameStr);
+  if (value) map[k] = value;
+  else delete map[k];
+  saveMap(key, map);
+}
+
+const EMPLOYEE_DISCORD_STORAGE_KEY = "badu_employee_discord_v1";
+const EMPLOYEE_IBAN_STORAGE_KEY = "badu_employee_iban_v1";
+const EMPLOYEE_NOPAY_STORAGE_KEY = "badu_employee_nopay_v1";
+const IBAN_PENDING_TEXT = "**IBAN pendiente**"; // en negrita en Discord
+const NO_PAY_TEXT = "No cobra";
+
+// Acepta el numero solo o pegado como <@123...>. "" = borrar; null = no valido.
+function parseDiscordId(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  const m = s.match(/^<?@?!?(\d{17,20})>?$/);
+  return m ? m[1] : null;
+}
+
+// Una letra y 6 numeros (J739745). "" = borrar; null = no valido.
+function parseIban(raw) {
+  const s = String(raw ?? "").replace(/\s+/g, "").toUpperCase();
+  if (!s) return "";
+  return /^[A-Z]\d{6}$/.test(s) ? s : null;
+}
+
+const getEmployeeDiscord = (n) => loadMap(EMPLOYEE_DISCORD_STORAGE_KEY)[normalizeKeySimple(n)] || "";
+const setEmployeeDiscord = (n, v) => setInMap(EMPLOYEE_DISCORD_STORAGE_KEY, n, v);
+const getEmployeeIban = (n) => loadMap(EMPLOYEE_IBAN_STORAGE_KEY)[normalizeKeySimple(n)] || "";
+const setEmployeeIban = (n, v) => setInMap(EMPLOYEE_IBAN_STORAGE_KEY, n, v);
+const isEmployeeNoPay = (n) => !!loadMap(EMPLOYEE_NOPAY_STORAGE_KEY)[normalizeKeySimple(n)];
+const setEmployeeNoPay = (n, v) => setInMap(EMPLOYEE_NOPAY_STORAGE_KEY, n, v ? 1 : 0);
 
 function normalizeKeySimple(s) {
   return s
@@ -358,13 +476,11 @@ function fmtMoney(n) {
   return `$ ${String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
 }
 
+// Igual que fmtMoney pero sin "$ " (para el texto de Discord): "5.000".
 function fmtMoneyPlain(n) {
-  return Number(n || 0).toLocaleString("es-ES");
+  return fmtMoney(n).slice(2);
 }
 
-function applyHalf(n, half) {
-  return half ? Math.floor((n || 0) / 2) : (n || 0);
-}
 
 function slugFilename(name) {
   return `${normalizeKeySimple(name).replaceAll(" ", "_")}.png`;
@@ -1695,7 +1811,6 @@ function setupContabilidad() {
     salesBySeller: {},
     salesBySellerQty: {},
     ignoredOtherBusiness: 0,
-    showHalf: false,
   };
 
   const refs = {
@@ -1709,66 +1824,178 @@ function setupContabilidad() {
     invTable: byId("inv-table"),
     salesTable: byId("sales-table"),
     totalGeneral: byId("conta-total-general"),
+    totalAPagar: byId("conta-total-a-pagar"),
     footer: byId("conta-footer"),
-    btnHalf: byId("conta-half"),
   };
 
-  function refresh() {
+  const RANK_BADGE = {
+    "en pruebas": "r-pruebas",
+    cajero: "r-cajero",
+    "cajero experimentado": "r-exp",
+    encargado: "r-encargado",
+    jefe: "r-jefe",
+    "jefe tribal": "r-tribal",
+  };
+
+  // Una fila por persona: facturas pagadas + rascas, su rango y lo que se le paga.
+  function buildRanking(employees) {
+    const byKey = new Map();
+    const row = (name) => {
+      const key = normalizeKeySimple(name);
+      if (!byKey.has(key)) byKey.set(key, { name, fact: 0, ras: 0, rasQty: 0 });
+      return byKey.get(key);
+    };
+    for (const [name, total] of Object.entries(state.invByIssuerPaid)) row(name).fact += Number(total || 0);
+    for (const [name, total] of Object.entries(state.salesBySeller)) {
+      const r = row(name);
+      r.ras += Number(total || 0);
+      r.rasQty += Number(state.salesBySellerQty[name] || 0);
+    }
+    const empByKey = new Map(employees.map((e) => [normalizeKeySimple(fullName(e)), e]));
+    const rows = [...byKey.entries()].map(([key, r]) => {
+      const e = empByKey.get(key);
+      const name = e ? fullName(e) : r.name;
+      const total = r.fact + r.ras;
+      const pct = e ? pctForRank(e.rank) : 0;
+      return { ...r, name, emp: e, rank: e?.rank || "", pct, total, payout: Math.round(total * pct), noPay: isEmployeeNoPay(name), iban: getEmployeeIban(name) };
+    });
+    rows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "es"));
+    return rows;
+  }
+
+  function renderRanking(rows, invSummary, salesSummary, totalAPagar) {
+    const list = byId("pg-ranking");
+    const maxTotal = Math.max(1, ...rows.map((r) => r.total));
+    const maxPayout = Math.max(0, ...rows.map((r) => (r.noPay ? 0 : r.payout)));
+    const top = rows.find((r) => maxPayout > 0 && !r.noPay && r.payout === maxPayout);
+    const paying = rows.filter((r) => r.emp && !r.noPay && r.payout > 0).length;
+
+    byId("pg-kpi-fact").textContent = fmtMoney(invSummary.paid_total + salesSummary.total);
+    byId("pg-kpi-fact-sub").textContent = rows.length
+      ? `${invSummary.paid_count} facturas · ${rows.length} ${rows.length === 1 ? "persona" : "personas"}`
+      : "Sin datos";
+    byId("pg-kpi-pay").textContent = fmtMoney(totalAPagar);
+    byId("pg-kpi-rascas").textContent = String(salesSummary.qty);
+    byId("pg-kpi-rascas-sub").textContent = salesSummary.count ? `${salesSummary.count} ventas · ${fmtMoney(salesSummary.total)}` : "-";
+    byId("pg-kpi-top").textContent = top ? top.name : "-";
+    byId("pg-kpi-top").title = top ? top.name : "";
+    byId("pg-kpi-top-sub").textContent = top ? `${fmtMoney(top.total)} cobrados` : "-";
+    byId("pg-total-label").textContent = paying ? `TOTAL A PAGAR · ${paying} ${paying === 1 ? "EMPLEADO" : "EMPLEADOS"}` : "TOTAL A PAGAR";
+
+    list.textContent = "";
+    if (!rows.length) {
+      const p = document.createElement("p");
+      p.className = "muted pg-empty";
+      p.textContent = "Pega el texto de Discord y pulsa Procesar para ver el ranking.";
+      list.appendChild(p);
+      return;
+    }
+    const el = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    };
+    rows.forEach((r, i) => {
+      const card = el("div", "pg-row" + (r === top ? " first" : ""));
+      const initials = r.name.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+      const av = el("div", "pg-av" + (r.noPay || !r.emp ? " np" : ""), initials);
+      if (r === top) {
+        av.appendChild(el("span", "crown", "★"));
+        av.title = "Empleado de la semana";
+      }
+      const pos = el("span", "pg-pos", String(i + 1));
+
+      const mid = el("div", "pg-mid");
+      const nameRow = el("div", "pg-name");
+      nameRow.appendChild(el("span", "", r.name));
+      if (!r.emp) nameRow.appendChild(el("span", "pg-badge w-nopay", "Sin registrar"));
+      else if (r.rank) nameRow.appendChild(el("span", "pg-badge " + (RANK_BADGE[normalizeKeySimple(r.rank)] || "w-nopay"), `${r.rank} · ${pctText(r.pct)}`));
+      else nameRow.appendChild(el("span", "pg-badge w-iban", "Sin rango"));
+      if (r.emp && r.noPay) nameRow.appendChild(el("span", "pg-badge w-nopay", "No cobra"));
+      else if (r.emp && !r.iban) nameRow.appendChild(el("span", "pg-badge w-iban", "Sin IBAN"));
+      const bar = el("div", "pg-bar");
+      const fill = el("i");
+      fill.style.width = `${Math.max(2, Math.round((r.total / maxTotal) * 100))}%`;
+      bar.appendChild(fill);
+      const meta = [`Facturas ${fmtMoney(r.fact)}`];
+      if (r.rasQty || r.ras) meta.push(`${r.rasQty} ${r.rasQty === 1 ? "rasca" : "rascas"} ${fmtMoney(r.ras)}`);
+      if (r.iban) meta.push(`IBAN ${r.iban}`);
+      mid.append(nameRow, bar, el("div", "pg-meta", meta.join(" · ")));
+
+      const amt = el("div", "pg-amt");
+      if (!r.emp) amt.append(el("small", "", "Sin registrar"), el("b", "pg-dash", "$ 0"));
+      else if (r.noPay) amt.append(el("small", "", `Le tocarían ${fmtMoney(r.payout)}`), el("b", "pg-dash", "No cobra"));
+      else if (!r.pct) amt.append(el("small", "", "Sin rango"), el("b", "pg-dash", "$ 0"));
+      else amt.append(el("small", "", `de ${fmtMoney(r.total)}`), el("b", "pay", fmtMoney(r.payout)));
+      card.append(pos, av, mid, amt);
+      list.appendChild(card);
+    });
+  }
+
+  async function refresh() {
+    const inv = Object.values(state.invoices);
     const invSummary = {
-      count: Object.keys(state.invoices).length,
-      total: Object.values(state.invoices).reduce((a, v) => a + (v.amount || 0), 0),
-      paid_count: Object.values(state.invoices).filter((v) => v.paid_at).length,
-      paid_total: Object.values(state.invoices).filter((v) => v.paid_at).reduce((a, v) => a + (v.amount || 0), 0),
-      pending_count: Object.values(state.invoices).filter((v) => !v.paid_at).length,
-      pending_total: Object.values(state.invoices).filter((v) => !v.paid_at).reduce((a, v) => a + (v.amount || 0), 0),
+      count: inv.length,
+      total: inv.reduce((a, v) => a + (v.amount || 0), 0),
+      paid_count: inv.filter((v) => v.paid_at).length,
+      paid_total: inv.filter((v) => v.paid_at).reduce((a, v) => a + (v.amount || 0), 0),
+      pending_count: inv.filter((v) => !v.paid_at).length,
+      pending_total: inv.filter((v) => !v.paid_at).reduce((a, v) => a + (v.amount || 0), 0),
     };
     const salesSummary = {
       count: state.sales.length,
+      qty: state.sales.reduce((a, s) => a + (s.qty || 0), 0),
       total: state.sales.reduce((a, s) => a + (s.total || 0), 0),
     };
 
-    const suffix = state.showHalf ? " (50%)" : "";
-    refs.invLine1.textContent = `Total: ${invSummary.count} | ${fmtMoney(applyHalf(invSummary.total, state.showHalf))}${suffix}`;
-    refs.invLine2.textContent = `Pagadas: ${invSummary.paid_count} | ${fmtMoney(applyHalf(invSummary.paid_total, state.showHalf))}${suffix}`;
-    refs.invLine3.textContent = `Pendientes: ${invSummary.pending_count} | ${fmtMoney(applyHalf(invSummary.pending_total, state.showHalf))}${suffix}`;
+    refs.invLine1.textContent = `Total: ${invSummary.count} | ${fmtMoney(invSummary.total)}`;
+    refs.invLine2.textContent = `Pagadas: ${invSummary.paid_count} | ${fmtMoney(invSummary.paid_total)}`;
+    refs.invLine3.textContent = `Pendientes: ${invSummary.pending_count} | ${fmtMoney(invSummary.pending_total)}`;
     refs.salesLine1.textContent = `Ventas: ${salesSummary.count}`;
-    refs.salesLine2.textContent = `Total: ${fmtMoney(applyHalf(salesSummary.total, state.showHalf))}${suffix}`;
+    refs.salesLine2.textContent = `Total: ${fmtMoney(salesSummary.total)}`;
 
     refs.invTable.innerHTML = "";
-    const invEntries = Object.entries(state.invByIssuer).sort(sortByValueDescThenName);
-    for (const [name, total] of invEntries) {
-      const paid = state.invByIssuerPaid[name] || 0;
-      const pending = state.invByIssuerPending[name] || 0;
+    for (const [name, total] of Object.entries(state.invByIssuer).sort(sortByValueDescThenName)) {
       refs.invTable.insertAdjacentHTML(
         "beforeend",
         `<tr>
-          <td>${name}</td>
-          <td class="num">${fmtMoney(applyHalf(total, state.showHalf))}${suffix}</td>
-          <td class="num">${fmtMoney(applyHalf(paid, state.showHalf))}${suffix}</td>
-          <td class="num">${fmtMoney(applyHalf(pending, state.showHalf))}${suffix}</td>
+          <td>${escapeHtml(name)}</td>
+          <td class="num">${fmtMoney(total)}</td>
+          <td class="num">${fmtMoney(state.invByIssuerPaid[name] || 0)}</td>
+          <td class="num">${fmtMoney(state.invByIssuerPending[name] || 0)}</td>
         </tr>`
       );
     }
-
     refs.salesTable.innerHTML = "";
-    const salesEntries = Object.entries(state.salesBySeller).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "es"));
-    for (const [name, total] of salesEntries) {
+    for (const [name, total] of Object.entries(state.salesBySeller).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "es"))) {
       refs.salesTable.insertAdjacentHTML(
         "beforeend",
         `<tr>
-          <td>${name}</td>
+          <td>${escapeHtml(name)}</td>
           <td class="num">${state.salesBySellerQty[name] || 0}</td>
-          <td class="num">${fmtMoney(applyHalf(total, state.showHalf))}${suffix}</td>
+          <td class="num">${fmtMoney(total)}</td>
         </tr>`
       );
     }
 
-    const totalGeneral = applyHalf(invSummary.total + salesSummary.total, state.showHalf);
+    let employees = [];
+    try {
+      employees = await listEmployees();
+    } catch {
+      employees = [];
+    }
+    const rows = buildRanking(employees);
+    const totalAPagar = rows.reduce((a, r) => a + (r.emp && !r.noPay ? r.payout : 0), 0);
+
+    const totalGeneral = invSummary.total + salesSummary.total;
     refs.totalGeneral.textContent = fmtMoney(totalGeneral);
+    refs.totalAPagar.textContent = fmtMoney(totalAPagar);
     let footerText = `Facturas: ${invSummary.count} | Rascas: ${salesSummary.count} | Total: ${fmtMoney(totalGeneral)}`;
     if (state.ignoredOtherBusiness > 0) footerText += ` | Ignorados (otro comercio): ${state.ignoredOtherBusiness}`;
     refs.footer.textContent = footerText;
     refs.loaded.textContent = invSummary.count || salesSummary.count ? "Datos cargados" : "Sin datos";
+    renderRanking(rows, invSummary, salesSummary, totalAPagar);
   }
 
   function clearState() {
@@ -1798,7 +2025,11 @@ function setupContabilidad() {
     state.salesBySeller = out.salesBySeller;
     state.salesBySellerQty = out.salesBySellerQty;
     state.ignoredOtherBusiness = out.ignoredOtherBusiness || 0;
-    refresh();
+    await refresh();
+    // En el movil el resumen queda debajo del texto: se baja hasta el.
+    if (window.matchMedia("(max-width: 1100px)").matches) {
+      document.querySelector("#tab-conta .pg-kpis")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
   }
 
   byId("conta-process").addEventListener("click", processCurrent);
@@ -1806,18 +2037,14 @@ function setupContabilidad() {
     refs.input.value = "";
     clearState();
   });
-  byId("conta-half").addEventListener("click", () => {
-    state.showHalf = !state.showHalf;
-    refs.btnHalf.textContent = state.showHalf ? "Ver total" : "Ver 50%";
-    refresh();
-  });
   byId("conta-paste").addEventListener("click", async () => {
     try {
       refs.input.value = await navigator.clipboard.readText();
-      await processCurrent();
     } catch {
-      alert("No se pudo leer el portapapeles.");
+      alert("No se pudo leer el portapapeles. Pega el texto a mano y pulsa Procesar.");
+      return;
     }
+    await processCurrent();
   });
   byId("conta-export").addEventListener("click", () => {
     if (!Object.keys(state.invoices).length && !state.sales.length) {
@@ -1832,35 +2059,23 @@ function setupContabilidad() {
     };
     const invoicesRows = Object.values(state.invoices)
       .sort(sortInvoices)
-      .map((v) => [
-        v.invoice_id,
-        v.issuer || "",
-        v.recipient || "",
-        v.concept || "",
-        v.amount ?? "",
-        v.sent_at || "",
-        v.paid_at || "",
-        v.paid_at ? "PAGADA" : "PENDIENTE",
-        v.method || "facturas",
-      ]);
+      .map((v) => [v.invoice_id, v.issuer || "", v.recipient || "", v.concept || "", v.amount ?? "", v.sent_at || "", v.paid_at || "", v.paid_at ? "PAGADA" : "PENDIENTE", v.method || "facturas"]);
     const salesRows = state.sales.map((s) => [s.seller || "", s.buyer || "", s.qty ?? "", s.total ?? ""]);
     downloadCsv("facturas_resultado.csv", ["invoice_id", "issuer", "recipient", "concept", "amount", "sent_at", "paid_at", "status", "metodo"], invoicesRows);
     downloadCsv("ventas_rasca_y_gana.csv", ["seller", "buyer", "qty", "total"], salesRows);
   });
 
-  setupEmployeesModal(state);
+  setupEmployeesModal(state, refresh);
   clearState();
 }
 
-function setupEmployeesModal(state) {
+function setupEmployeesModal(state, refreshPagos) {
   const totalsModal = byId("employees-modal");
   const totalsBody = byId("employees-body");
   const adminModal = byId("employees-admin-modal");
 
   let selectedId = null;
   let totalsRows = [];
-
-  const fullName = (e) => `${String(e?.name || "").trim()} ${String(e?.surname || "").trim()}`.replace(/\s+/g, " ").trim();
 
   function sumByNormalizedName(map, name) {
     const target = normalizeKeySimple(name);
@@ -1875,15 +2090,18 @@ function setupEmployeesModal(state) {
     const employees = await listEmployees();
     totalsRows = employees.map((e) => {
       const name = fullName(e);
-      let paid = sumByNormalizedName(state.invByIssuerPaid, name);
-      let ras = sumByNormalizedName(state.salesBySeller, name);
-      if (state.showHalf) {
-        paid = Math.floor(paid / 2);
-        ras = Math.floor(ras / 2);
-      }
-      return { id: e.id, name, rank: e.rank || "", paid, ras, total: paid + ras };
+      const paid = sumByNormalizedName(state.invByIssuerPaid, name);
+      const ras = sumByNormalizedName(state.salesBySeller, name);
+      const gross = paid + ras;
+      const pct = pctForRank(e.rank);
+      return {
+        id: e.id, name, rank: e.rank || "", pct, paid, ras, gross,
+        payout: Math.round(gross * pct),
+        discord: getEmployeeDiscord(name), iban: getEmployeeIban(name), noPay: isEmployeeNoPay(name),
+      };
     });
-    totalsRows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "es"));
+    // Primero quien cobra (de mas a menos); los que no cobran, al final.
+    totalsRows.sort((a, b) => a.noPay - b.noPay || b.payout - a.payout || a.name.localeCompare(b.name, "es"));
   }
 
   function renderTotalsRows() {
@@ -1892,31 +2110,32 @@ function setupEmployeesModal(state) {
       const tr = document.createElement("tr");
       if (row.id === selectedId) tr.classList.add("is-selected");
       tr.innerHTML = `
-        <td>${row.name}</td>
-        <td>${row.rank || "-"}</td>
+        <td>${escapeHtml(row.name)}</td>
+        <td>${escapeHtml(row.rank || "-")}</td>
+        <td class="num">${row.pct ? pctText(row.pct) : "-"}</td>
         <td class="num">${fmtMoney(row.paid)}</td>
         <td class="num">${fmtMoney(row.ras)}</td>
-        <td class="num">${fmtMoney(row.total)}</td>
+        <td class="num">${row.noPay ? `<span class="muted" title="Le corresponderían ${fmtMoney(row.payout)}">${NO_PAY_TEXT}</span>` : fmtMoney(row.payout)}</td>
       `;
       tr.addEventListener("click", () => {
         selectedId = row.id;
         renderTotalsRows();
       });
       tr.addEventListener("dblclick", async () => {
-        const text = String(row.total);
+        const text = row.noPay ? NO_PAY_TEXT : String(row.payout);
         const ok = await copyText(text);
         if (!ok) openCopyFallback(text);
       });
       totalsBody.appendChild(tr);
     }
-    const bankTotal = totalsRows.reduce((acc, r) => acc + r.total, 0);
-    byId("employees-bank-total").textContent = `Total banco: ${fmtMoney(bankTotal)}`;
+    const bankTotal = totalsRows.reduce((acc, r) => acc + (r.noPay ? 0 : r.payout), 0);
+    byId("employees-bank-total").textContent = `Total a pagar: ${fmtMoney(bankTotal)}`;
   }
 
   async function openTotalsModal() {
     const employees = await listEmployees();
     if (!employees.length) {
-      alert("No hay empleados en la lista. Entra en 'Gestion empleados' para anadirlos.");
+      alert("No hay empleados en la lista. Entra en 'Gestión de empleados' para añadirlos.");
       return;
     }
     await buildTotalsRows();
@@ -1929,41 +2148,80 @@ function setupEmployeesModal(state) {
     openTotalsModal().catch(() => alert("No se pudieron cargar los empleados."));
   });
 
+  // Quien mas cobra (y si cobra) es el empleado de la semana; si hay empate, todos.
+  function isEmployeeOfWeek(row) {
+    const maxPayout = Math.max(0, ...totalsRows.map((r) => (r.noPay ? 0 : r.payout)));
+    return maxPayout > 0 && !row.noPay && row.payout === maxPayout;
+  }
+
+  // "Nombre (Rango) <@ID>": si tiene Discord, se le etiqueta.
+  function labelForCopy(row) {
+    let label = row.rank ? `${row.name} (${row.rank})` : row.name;
+    if (row.discord) label += ` <@${row.discord}>`;
+    return label;
+  }
+
+  const ibanForCopy = (row) => (row.iban ? `IBAN ${row.iban}` : IBAN_PENDING_TEXT);
+
   byId("employees-copy-sel").addEventListener("click", async () => {
     const row = totalsRows.find((r) => r.id === selectedId);
     if (!row) return;
-    const name = row.rank ? `${row.name} (${row.rank})` : row.name;
-    const text = `${name} | Facturas: ${fmtMoney(row.paid)} | Rascas: ${fmtMoney(row.ras)} | TOTAL: ${fmtMoney(row.total)}`;
-
+    const pct = row.pct ? pctText(row.pct) : "-";
+    let text = row.noPay
+      ? `${labelForCopy(row)} | ${pct} | Cobrado: ${fmtMoney(row.gross)} | ${NO_PAY_TEXT}`
+      : `${labelForCopy(row)} | ${pct} | Cobrado: ${fmtMoney(row.gross)} | A pagar: ${fmtMoney(row.payout)} | ${ibanForCopy(row)}`;
+    if (isEmployeeOfWeek(row)) text += ` | ${EMPLOYEE_OF_WEEK_TAG}`;
     const ok = await copyText(text);
     if (!ok) openCopyFallback(text);
   });
 
   byId("employees-remove")?.addEventListener("click", () => {
-    const row = totalsRows.find((r) => r.id === selectedId);
-    if (!row) return;
+    if (!totalsRows.some((r) => r.id === selectedId)) return;
     totalsRows = totalsRows.filter((r) => r.id !== selectedId);
     selectedId = null;
     renderTotalsRows();
   });
 
-  byId("employees-copy-all").addEventListener("click", async () => {
-    if (!totalsRows.length) {
-return;
-    }
-    const maxTotal = Math.max(0, ...totalsRows.map((r) => r.total));
-    const lines = totalsRows.map((r) => {
-      const name = r.rank ? `${r.name} (${r.rank})` : r.name;
-      let line = `* ${name}: ${fmtMoneyPlain(r.total)}`;
-      if (r.total === maxTotal && maxTotal > 0) {
-        line += " <@&1364707155130712195>";
-      }
-      return line;
-    });
-    const text = lines.join("\n");
+  // Texto para el canal de pagas (el mismo de "Copiar todo").
+  function discordPayText() {
+    return totalsRows
+      .map((r) => {
+        let line = r.noPay
+          ? `* ${labelForCopy(r)}: ${NO_PAY_TEXT}`
+          : `* ${labelForCopy(r)}: ${fmtMoneyPlain(r.payout)} · ${ibanForCopy(r)}`;
+        if (isEmployeeOfWeek(r)) line += ` ${EMPLOYEE_OF_WEEK_TAG}`;
+        return line;
+      })
+      .join("\n");
+  }
 
+  byId("employees-copy-all").addEventListener("click", async () => {
+    if (!totalsRows.length) return;
+    const text = discordPayText();
     const ok = await copyText(text);
     if (!ok) openCopyFallback(text);
+  });
+
+  // Boton del panel de Pagos: arma los totales sin abrir la ventana y copia.
+  byId("pg-copy-discord")?.addEventListener("click", async () => {
+    const status = byId("pg-copy-status");
+    try {
+      await buildTotalsRows();
+    } catch {
+      alert("No se pudieron cargar los empleados.");
+      return;
+    }
+    if (!totalsRows.length) {
+      alert("No hay empleados en la lista. Entra en 'Gestión de empleados' para añadirlos.");
+      return;
+    }
+    const text = discordPayText();
+    const ok = await copyText(text);
+    if (!ok) openCopyFallback(text);
+    if (status) {
+      status.textContent = ok ? `✔ Copiado: ${totalsRows.length} empleados. Pégalo en el canal de pagas.` : "";
+      setTimeout(() => (status.textContent = ""), 4000);
+    }
   });
 
   function openAdminModal() {
@@ -1979,6 +2237,8 @@ return;
 
   setupEmployeesAdminModal({
     onChanged: async () => {
+      // Rango, IBAN o "No cobra" cambian lo que muestra Pagos.
+      await refreshPagos?.();
       if (totalsModal.open) {
         await buildTotalsRows();
         renderTotalsRows();
@@ -1995,9 +2255,34 @@ function setupEmployeesAdminModal({ onChanged }) {
   const nameInput = byId("emp-new-name");
   const surInput = byId("emp-new-surname");
   const rankInput = byId("emp-new-rank");
+  const discordInput = byId("emp-new-discord");
+  const ibanInput = byId("emp-new-iban");
 
   const searchInput = byId("emp-search");
   const body = byId("emp-admin-body");
+
+  // Desplegable de rangos con su %; un rango antiguo que no este en la lista se conserva.
+  function fillRankSelect(select, current) {
+    select.textContent = "";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "Sin rango";
+    select.appendChild(blank);
+    for (const r of RANKS) {
+      const opt = document.createElement("option");
+      opt.value = r.label;
+      opt.textContent = `${r.label} (${pctText(r.pct)})`;
+      select.appendChild(opt);
+    }
+    if (current && !pctForRank(current)) {
+      const opt = document.createElement("option");
+      opt.value = current;
+      opt.textContent = `${current} (sin %)`;
+      select.appendChild(opt);
+    }
+    select.value = current || "";
+  }
+  fillRankSelect(rankInput, "");
 
   let unlocked = false;
   let adminPass = "";
@@ -2008,52 +2293,117 @@ function setupEmployeesAdminModal({ onChanged }) {
     status.style.color = ok ? "var(--ok)" : "var(--muted)";
   }
 
-  function normalizeForSearch(s) {
-    return normalizeKeySimple(String(s || ""));
-  }
+  const needUnlock = () => {
+    if (unlocked) return false;
+    alert("Primero desbloquea con la contraseña.");
+    return true;
+  };
 
   function renderList() {
-    const q = normalizeForSearch(searchInput.value);
+    const q = normalizeKeySimple(searchInput.value || "");
     const shown = !q
       ? employees
-      : employees.filter((e) => {
-          const full = `${e.name} ${e.surname} ${e.rank || ""}`;
-          return normalizeForSearch(full).includes(q);
-        });
+      : employees.filter((e) => normalizeKeySimple(`${e.name} ${e.surname} ${e.rank || ""}`).includes(q));
 
     body.innerHTML = "";
+    if (!shown.length) {
+      body.innerHTML = `<tr><td colspan="7" class="muted">${employees.length ? "Sin resultados" : "Aún no hay empleados. Añádelos arriba."}</td></tr>`;
+      return;
+    }
     for (const e of shown) {
+      const full = fullName(e);
+      const pct = pctForRank(e.rank);
       const tr = document.createElement("tr");
-      const full = `${e.name} ${e.surname}`.replace(/\s+/g, " ").trim();
       tr.innerHTML = `
-        <td>${full}</td>
-        <td>${e.rank || "-"}</td>
-        <td class="num">
-          <button type="button" class="danger" data-del="${String(e.id)}">Eliminar</button>
-        </td>
+        <td>${escapeHtml(full)}</td>
+        <td><select class="text-input emp-rank-select" aria-label="Rango de ${escapeHtml(full)}"></select></td>
+        <td class="num emp-pct">${e.rank ? pctText(pct) : "-"}</td>
+        <td><input class="text-input emp-discord-input" type="text" inputmode="numeric" placeholder="ID de Discord" aria-label="Discord de ${escapeHtml(full)}" title="ID de Discord: clic derecho sobre la persona → Copiar ID de usuario" /></td>
+        <td><input class="text-input emp-iban-input" type="text" placeholder="J000000" maxlength="9" aria-label="IBAN de ${escapeHtml(full)}" title="IBAN del banco del servidor (una letra y 6 números)" /></td>
+        <td class="center"><input class="emp-nopay-input" type="checkbox" aria-label="${escapeHtml(full)} no cobra" title="No cobra la nómina: no se le pide IBAN y no suma al Total a Pagar" /></td>
+        <td class="num"><button type="button" class="danger small" data-del="1">Eliminar</button></td>
       `;
       body.appendChild(tr);
-    }
 
-    body.querySelectorAll("button[data-del]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const id = btn.getAttribute("data-del");
-        if (!unlocked) {
-          alert("Primero desbloquea con la contraseña.");
+      const select = tr.querySelector(".emp-rank-select");
+      fillRankSelect(select, e.rank || "");
+      select.addEventListener("change", async () => {
+        if (needUnlock()) {
+          select.value = e.rank || "";
           return;
         }
-        const emp = employees.find((x) => String(x.id) === String(id));
-        const label = emp ? `${emp.name} ${emp.surname}` : `ID ${id}`;
-        if (!confirm(`Eliminar a ${label}?`)) return;
         try {
-          await deleteEmployee(id, adminPass);
+          await updateEmployee(e.id, { rank: select.value }, adminPass);
+          await refresh();
+          await (onChanged?.());
+        } catch (err) {
+          alert(String(err?.message || err || "Error"));
+          select.value = e.rank || "";
+        }
+      });
+
+      const dInput = tr.querySelector(".emp-discord-input");
+      dInput.value = getEmployeeDiscord(full);
+      dInput.addEventListener("change", async () => {
+        if (needUnlock()) {
+          dInput.value = getEmployeeDiscord(full);
+          return;
+        }
+        const id = parseDiscordId(dInput.value);
+        if (id === null) {
+          alert("Eso no parece un ID de Discord. Es un número de 17 a 20 cifras (clic derecho sobre la persona → Copiar ID de usuario).");
+          dInput.value = getEmployeeDiscord(full);
+          return;
+        }
+        setEmployeeDiscord(full, id);
+        dInput.value = id;
+        await (onChanged?.());
+      });
+
+      const iInput = tr.querySelector(".emp-iban-input");
+      iInput.value = getEmployeeIban(full);
+      iInput.addEventListener("change", async () => {
+        if (needUnlock()) {
+          iInput.value = getEmployeeIban(full);
+          return;
+        }
+        const iban = parseIban(iInput.value);
+        if (iban === null) {
+          alert("El IBAN no es válido. Es una letra y 6 números, como J739745 (sale en el banco, en Informaciones).");
+          iInput.value = getEmployeeIban(full);
+          return;
+        }
+        setEmployeeIban(full, iban);
+        iInput.value = iban;
+        await (onChanged?.());
+      });
+
+      const npInput = tr.querySelector(".emp-nopay-input");
+      npInput.checked = isEmployeeNoPay(full);
+      npInput.addEventListener("change", async () => {
+        if (needUnlock()) {
+          npInput.checked = isEmployeeNoPay(full);
+          return;
+        }
+        setEmployeeNoPay(full, npInput.checked);
+        await (onChanged?.());
+      });
+
+      tr.querySelector("button[data-del]").addEventListener("click", async () => {
+        if (needUnlock()) return;
+        if (!confirm(`Eliminar a ${full}?`)) return;
+        try {
+          await deleteEmployee(e.id, adminPass);
+          setEmployeeDiscord(full, "");
+          setEmployeeIban(full, "");
+          setEmployeeNoPay(full, false);
           await refresh();
           await (onChanged?.());
         } catch (err) {
           alert(String(err?.message || err || "Error"));
         }
       });
-    });
+    }
   }
 
   async function refresh() {
@@ -2094,28 +2444,45 @@ function setupEmployeesAdminModal({ onChanged }) {
     }
   });
 
-  byId("emp-new-add").addEventListener("click", async () => {
+  const addBtn = byId("emp-new-add");
+  addBtn.addEventListener("click", async () => {
+    if (addBtn.disabled) return;
     const name = String(nameInput.value || "").trim();
     const surname = String(surInput.value || "").trim();
     const rank = String(rankInput.value || "").trim();
+    const discord = parseDiscordId(discordInput.value);
+    const iban = parseIban(ibanInput.value);
 
     if (!name || !surname) {
       alert("Pon Nombre y Apellido.");
       return;
     }
-    if (!unlocked) {
-      alert("Primero desbloquea con la contraseña.");
+    if (discord === null) {
+      alert("El ID de Discord no es válido. Es un número de 17 a 20 cifras (o déjalo vacío).");
       return;
     }
+    if (iban === null) {
+      alert("El IBAN no es válido. Es una letra y 6 números, como J739745 (o déjalo vacío).");
+      return;
+    }
+    if (needUnlock()) return;
+    addBtn.disabled = true; // evita guardar dos veces mientras se guarda
     try {
       await addEmployee({ name, surname, rank }, adminPass);
+      const full = `${name} ${surname}`;
+      if (discord) setEmployeeDiscord(full, discord);
+      if (iban) setEmployeeIban(full, iban);
       nameInput.value = "";
       surInput.value = "";
       rankInput.value = "";
+      discordInput.value = "";
+      ibanInput.value = "";
       await refresh();
       await (onChanged?.());
     } catch (err) {
       alert(String(err?.message || err || "Error"));
+    } finally {
+      addBtn.disabled = false;
     }
   });
 

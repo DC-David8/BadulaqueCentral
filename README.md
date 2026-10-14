@@ -8,15 +8,30 @@ Funciona en el navegador (GitHub Pages) y también como programa de escritorio (
 
 1. **Caja** · Teclas con los productos del Badulaque y un **buscador** arriba para encontrarlos al escribir. Clic izquierdo suma una unidad y clic derecho la resta. El **visor** verde del ticket muestra el último producto tocado y el total. El ticket permite cambiar la cantidad a mano, borrar líneas, **Deshacer**, **Quitar** la línea seleccionada y **Limpiar**. Con **Copiar total** y **Concepto** se rellena el cobro del datáfono sin escribir nada; el concepto se ajusta solo a los 40 caracteres del datáfono (ver *Concepto para el datáfono*). No pide contraseña.
 2. **Gestión de Productos** · Botón **⚙ Productos** de la barra lateral (en el móvil, el botón de la Caja): añadir productos nuevos (nombre, precio, suministros por unidad e icono), editar el precio y los suministros de los productos fijos, y ocultarlos o restaurarlos. Si no subes imagen, se genera un icono con las iniciales.
-3. **Facturas / Rascas** · Pegas el texto copiado de Discord y pulsa **Procesar** (o **Pegar + Procesar**). Reconoce:
+3. **Pagos** · Pegas el texto copiado de Discord y pulsa **Procesar** (o **Pegar + Procesar**). Reconoce:
    - **Facturas**: `Nueva Factura` y `Factura Pagada`, unidas por su ID. Se separan en pagadas y pendientes.
    - **Datáfono TPV**: recibos con importe, cobrador, cliente, concepto y AUT. Cuentan siempre como pagados, y los de **otros comercios se ignoran** (se indica cuántos al pie).
    - **Rasca y Gana**: ventas con vendedor, comprador, cantidad y total.
 
-   Muestra el resumen general y las tablas por empleado. **Ver 50%** cambia todas las cifras a la mitad (la parte del empleado). **Exportar CSV** descarga `facturas_resultado.csv` y `ventas_rasca_y_gana.csv`.
-4. **Totales empleados** · Suma, por cada empleado registrado, sus facturas pagadas y sus rascas (respetando Ver 50%) y el **total banco**. **Copiar todo** genera la lista para Discord y menciona el rol configurado en quien más ha facturado; doble clic en una fila copia su total.
-5. **Gestión de empleados** · Alta y baja de empleados (nombre, apellido y rango). El nombre debe coincidir con el que sale en Discord (*Emitida por*, *Cobrador* o *Vendedor*).
+   Muestra tarjetas con lo **cobrado**, el **total a pagar**, las **rascas** y el **empleado de la semana**, y un **ranking** con una fila por persona: rango y %, barra de lo cobrado, IBAN, lo que hay que pagarle y avisos (*Sin IBAN*, *No cobra*, *Sin registrar*, *Sin rango*). **Copiar para Discord** copia la lista de pagos lista para pegar. Las tablas de siempre están en **Ver detalle**. **Exportar CSV** descarga `facturas_resultado.csv` y `ventas_rasca_y_gana.csv`.
+4. **Totales empleados** · Por cada empleado registrado: rango, %, facturas pagadas, rascas y **lo que hay que pagarle**, más el **total a pagar**. **Copiar todo** (igual que *Copiar para Discord*) genera una línea por persona: `* Ana Lopez (Encargado) <@ID>: 5.000 · IBAN J739745`, con `**IBAN pendiente**` si falta y el rol de empleado de la semana en quien más cobra. Quien no cobra va al final como *No cobra*. Doble clic en una fila copia lo que se le paga.
+5. **Gestión de empleados** · Igual que en Aguila Motors: tabla con **Empleado, Rango, % de Comisión según Rango, Discord, IBAN y No cobra**. El rango se elige en un desplegable (cambia el % al momento), el ID de Discord sirve para etiquetarle al copiar los pagos, el IBAN (una letra y 6 números, como `J739745`) sale en la nómina, y *No cobra* le saca del total a pagar. El nombre debe coincidir con el que sale en Discord (*Emitida por*, *Cobrador* o *Vendedor*). Discord, IBAN y No cobra se guardan en el navegador de cada equipo.
 6. **Crafteos / Suministros** · Pegas el log de crafteo (`Nombre crafteó 5x Cerveza`) y calcula los **suministros gastados** por empleado y por producto. Avisa de los productos sin coste asignado. **Exportar CSV** descarga `crafteos_suministros.csv`.
+
+## Rangos y comisión
+
+Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (facturas pagadas, datáfono incluido, más sus rascas), según su rango:
+
+| Rango | Comisión |
+|---|---|
+| En Pruebas | 35 % |
+| Cajero | 40 % |
+| Cajero Experimentado | 45 % |
+| Encargado | 50 % |
+| Jefe | 50 % |
+| Jefe Tribal | 50 % |
+
+Las facturas pendientes de pago no cuentan. Los rangos y porcentajes se cambian en `app.js` → `RANKS`.
 
 ## Concepto para el datáfono
 
@@ -80,7 +95,7 @@ Cada zona tiene su propia contraseña:
 | Zona | Quién la usa |
 |---|---|
 | Caja | Sin contraseña |
-| Facturas / Rascas (incluye Ver 50% y Totales empleados) | Gerencia |
+| Pagos (incluye Totales empleados) | Gerencia |
 | Crafteos / Suministros | Gerencia |
 | Gestión de Productos | Jefe |
 | Gestión de empleados | Jefe |
@@ -115,7 +130,7 @@ No necesita servidor ni dependencias: es HTML, CSS y JavaScript puros.
 La página imita una caja registradora: fondo grafito, botones con relieve tipo tecla, cifras en letra monoespaciada y un visor verde con el total.
 
 **En PC:**
-- Barra lateral con las secciones (Caja, Facturas y Crafteos; el candado indica que piden contraseña) y el botón **⚙ Productos** para la Gestión de Productos.
+- Barra lateral con las secciones (Caja, Pagos y Crafteos; el candado indica que piden contraseña) y el botón **⚙ Productos** para la Gestión de Productos.
 - Productos en teclas compactas con icono, nombre, precio y contador (×2) de las unidades que ya están en el ticket.
 - Ticket con el visor arriba (último producto tocado y total), la lista y las teclas Deshacer, Quitar, Limpiar, **Copiar total** y Concepto.
 
@@ -150,6 +165,14 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 11 · 13 de octubre de 2026 · Pagos por rangos
+- La pestaña Facturas pasa a ser **Pagos**, con el estilo del módulo de pagos de Aguila Motors adaptado al Terminal TPV: tarjetas (cobrado, total a pagar, rascas y empleado de la semana), ranking por persona con rango, barra, IBAN, avisos y lo que hay que pagarle, total a pagar en el visor y botón **Copiar para Discord**. Las tablas de antes quedan en *Ver detalle*.
+- **Comisión por rango** (En Pruebas 35 %, Cajero 40 %, Cajero Experimentado 45 %, Encargado 50 %, Jefe 50 %, Jefe Tribal 50 %) sobre facturas pagadas + rascas. Sustituye al botón *Ver 50%*.
+- **Gestión de empleados** como en Aguila Motors: rango en desplegable con su %, ID de Discord, IBAN y casilla *No cobra*.
+- Totales empleados y *Copiar todo* con %, lo que hay que pagar, etiqueta de Discord, IBAN (o **IBAN pendiente**) y quien no cobra al final.
+- Importes con punto de miles también en el texto para Discord.
+- El programa de escritorio sigue recibiendo su clave antigua al guardar empleados; la nueva se comprueba en la página.
 
 ### Versión 10 · 13 de octubre de 2026 · Contraseñas nuevas
 - Contraseñas nuevas y más largas: una para gerencia (Facturas y Crafteos) y otra para jefe (Gestión de Productos y Gestión de empleados). Las antiguas dejan de funcionar.
