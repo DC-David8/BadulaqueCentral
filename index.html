@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=12" />
+  <link rel="stylesheet" href="styles.css?v=13" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -53,6 +53,7 @@
       <button type="button" class="tab is-active" data-tab-target="tab-caja"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10M12 16v4"/></svg><span>Caja</span></button>
       <button type="button" class="tab" data-tab-target="tab-conta"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><path d="M9 13h8M9 17h6"/></svg><span>Pagos</span><svg class="tab-lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
       <button type="button" class="tab" data-tab-target="tab-craft"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4l6 6-9 9H5v-6z"/><path d="M12 6l6 6"/></svg><span>Crafteos</span><svg class="tab-lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
+      <button type="button" class="tab" data-tab-target="tab-sorteo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.6"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4M5.3 5.3l2.8 2.8M15.9 15.9l2.8 2.8M18.7 5.3l-2.8 2.8M8.1 15.9l-2.8 2.8"/><circle cx="16.3" cy="8.9" r="1.1" fill="currentColor" stroke="none"/></svg><span>Sorteo</span><svg class="tab-lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
     </nav>
     <button type="button" class="rail-btn" id="rail-products" title="Gestión de Productos"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z"/></svg><span>Productos</span></button>
   </aside>
@@ -294,13 +295,127 @@
       </div>
     </section>
 
+    <section id="tab-sorteo" class="tab-panel">
+      <nav class="sx-subtabs" aria-label="Pasos del sorteo">
+        <button type="button" class="sx-subtab is-active" data-sx="sx-part">1 · Participantes</button>
+        <button type="button" class="sx-subtab" data-sx="sx-live">2 · Sorteo en vivo</button>
+      </nav>
+
+      <!-- Paso 1: participantes -->
+      <div id="sx-part" class="sx-pane is-active">
+        <div class="split sx-split">
+          <section class="card">
+            <h2>Facturas del sorteo</h2>
+            <textarea id="sx-input" class="terminal-input" rows="10" placeholder="Pega aquí las facturas del datáfono del sorteo y pulsa Procesar"></textarea>
+            <div class="actions">
+              <button type="button" class="primary" id="sx-paste">Pegar + Procesar</button>
+              <button type="button" id="sx-process">Procesar</button>
+              <button type="button" id="sx-clear" class="ghost">Limpiar</button>
+            </div>
+
+            <h3>Reglas de validez</h3>
+            <div class="sx-rules">
+              <div class="sx-rule"><span class="sx-ok">✔</span> La factura tiene <b>nombre del comprador</b> (Cliente / Para)</div>
+              <div class="sx-rule"><span class="sx-ok">✔</span> El concepto lleva la palabra <b>«sorteo»</b></div>
+              <div class="sx-rule"><span class="sx-ok">✔</span> <b>No es venta a sí mismo</b> (comprador distinto del que cobra)</div>
+            </div>
+
+            <h3>Ajustes</h3>
+            <div class="sx-set">
+              <label>Boletos
+                <select id="sx-mode" class="text-input">
+                  <option value="amount">Según el monto de la factura</option>
+                  <option value="invoice">1 boleto por factura</option>
+                </select>
+              </label>
+              <label id="sx-price-wrap">Precio del boleto ($)
+                <input id="sx-price" class="text-input" type="number" min="1" step="1" value="1000" />
+              </label>
+              <label>Desde (opcional)
+                <input id="sx-from" class="text-input" type="date" />
+              </label>
+              <label>Hasta (opcional)
+                <input id="sx-to" class="text-input" type="date" />
+              </label>
+            </div>
+            <label class="sx-check"><input type="checkbox" id="sx-no-staff" /> Los empleados del Badulaque no participan</label>
+          </section>
+
+          <section class="card">
+            <h2>Participantes</h2>
+            <div class="sx-kpis">
+              <div class="sx-kpi"><div class="lbl">Facturas válidas</div><div class="val" id="sx-k-valid">0</div></div>
+              <div class="sx-kpi hl"><div class="lbl">Boletos</div><div class="val" id="sx-k-tickets">0</div></div>
+              <div class="sx-kpi"><div class="lbl">Participantes</div><div class="val" id="sx-k-people">0</div></div>
+              <div class="sx-kpi bad"><div class="lbl">Descartadas</div><div class="val" id="sx-k-bad">0</div></div>
+            </div>
+            <div class="sx-h"><h3>Boletos por persona</h3><span id="sx-rule-note"></span></div>
+            <div id="sx-people"><p class="muted pg-empty">Pega las facturas del sorteo y pulsa Procesar.</p></div>
+            <div class="sx-h"><h3>Facturas descartadas</h3><span>No entran en el sorteo</span></div>
+            <div id="sx-bad"><p class="muted">Ninguna.</p></div>
+            <div class="pg-actions sx-part-actions">
+              <button type="button" class="primary" id="sx-go-live">Ir al sorteo en vivo →</button>
+              <button type="button" id="sx-copy-seal">Copiar lista sellada para Discord</button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Paso 2: sorteo en vivo -->
+      <div id="sx-live" class="sx-pane">
+        <div class="sx-combo">
+          <section class="card">
+            <h2>Premios y ganadores</h2>
+            <div class="sx-prog"><span id="sx-prog-text">0 de 0 premios sorteados</span><span id="sx-pool-text"></span></div>
+            <div class="sx-progbar"><i id="sx-prog-bar"></i></div>
+            <div id="sx-prizes"></div>
+            <div class="sx-add">
+              <select id="sx-new-icon" class="text-input" aria-label="Icono del premio"></select>
+              <input id="sx-new-name" class="text-input" type="text" placeholder="Nuevo premio (ej. Mochila de Outfits)" aria-label="Nombre del premio" />
+              <button type="button" id="sx-add-prize">Añadir</button>
+            </div>
+            <label class="sx-check"><input type="checkbox" id="sx-one-each" checked /> Un premio por persona (quien gana sale del bombo)</label>
+          </section>
+
+          <div>
+            <section class="card">
+              <div class="sx-stage">
+                <div class="sx-confetti" id="sx-confetti"></div>
+                <span class="sx-tag" id="sx-stage-tag">SORTEO</span>
+                <h2 id="sx-stage-title">Añade los premios</h2>
+                <div class="sx-reel"><div class="sx-reel-line"></div><ul id="sx-reel"></ul></div>
+                <div class="sx-odds" id="sx-odds"></div>
+                <div class="sx-btns">
+                  <button type="button" id="sx-draw" class="primary sx-go">🎰 Sortear</button>
+                  <button type="button" id="sx-reset" class="ghost">Nuevo sorteo</button>
+                </div>
+                <div class="sx-seal" id="sx-seal"></div>
+              </div>
+            </section>
+            <div class="sx-under">
+              <section class="card">
+                <h2>Anuncio para Discord</h2>
+                <pre class="sx-discord" id="sx-discord"></pre>
+              </section>
+              <div class="sx-side">
+                <button type="button" class="primary" id="sx-copy-all">📋 Copiar anuncio</button>
+                <button type="button" id="sx-copy-last">Copiar solo el último ganador</button>
+                <button type="button" id="sx-export" class="ghost">Exportar CSV</button>
+                <p class="sx-note" id="sx-copy-status">El anuncio se va escribiendo solo con cada premio que sale.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Botones fijos de la Caja en el movil -->
     <div class="m-actions" id="m-actions">
       <button type="button" class="primary" id="m-copy-concept">Copiar concepto</button>
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
-    <footer class="app-version">Versión 12 · Copiar concepto destacado</footer>
+    <footer class="app-version">Versión 13 · Sorteo</footer>
   </main>
   </div>
 
@@ -520,6 +635,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

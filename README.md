@@ -18,6 +18,19 @@ Funciona en el navegador (GitHub Pages) y también como programa de escritorio (
 5. **Gestión de empleados** · Igual que en Aguila Motors: tabla con **Empleado, Rango, % de Comisión según Rango, Discord, IBAN y No cobra**. El rango se elige en un desplegable (cambia el % al momento), el ID de Discord sirve para etiquetarle al copiar los pagos, el IBAN (una letra y 6 números, como `J739745`) sale en la nómina, y *No cobra* le saca del total a pagar. El nombre debe coincidir con el que sale en Discord (*Emitida por*, *Cobrador* o *Vendedor*). Discord, IBAN y No cobra se guardan en el navegador de cada equipo.
 6. **Crafteos / Suministros** · Pegas el log de crafteo (`Nombre crafteó 5x Cerveza`) y calcula los **suministros gastados** por empleado y por producto. Avisa de los productos sin coste asignado. **Exportar CSV** descarga `crafteos_suministros.csv`.
 
+## Sorteo
+
+Pestaña **Sorteo** (contraseña de gerencia), igual que el Módulo de Sorteo de Aguila Motors. Tiene dos pasos:
+
+**1 · Participantes.** Se pegan las facturas del datáfono del sorteo. Una factura vale si:
+- tiene **nombre del comprador** (Cliente / Para),
+- el concepto lleva la palabra **«sorteo»**,
+- **no es venta a sí mismo** (el comprador no es quien cobra).
+
+Los boletos salen **según el monto** (1 boleto cada $ 1.000, cambiable) o **1 por factura**. Se puede limitar por fechas y dejar fuera a los empleados del Badulaque. Las facturas que no valen salen abajo con el motivo. **Copiar lista sellada para Discord** publica la lista con su huella antes de sortear.
+
+**2 · Sorteo en vivo.** Se añaden los premios en orden y se sortean uno a uno con una tragaperras de nombres y confeti. Cada boleto es una oportunidad (azar seguro) y, si está marcado, quien gana sale del bombo. Al sortear el primer premio la lista queda **sellada** con una huella SHA-256, así se puede demostrar que no se cambió. El **anuncio para Discord** se escribe solo; también se puede copiar solo el último ganador o exportar a CSV. Todo queda guardado en el navegador.
+
 ## Rangos y comisión
 
 Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (facturas pagadas, datáfono incluido, más sus rascas), según su rango:
@@ -97,6 +110,7 @@ Cada zona tiene su propia contraseña:
 | Caja | Sin contraseña |
 | Pagos (incluye Totales empleados) | Gerencia |
 | Crafteos / Suministros | Gerencia |
+| Sorteo | Gerencia |
 | Gestión de Productos | Jefe |
 | Gestión de empleados | Jefe |
 
@@ -130,7 +144,7 @@ No necesita servidor ni dependencias: es HTML, CSS y JavaScript puros.
 La página imita una caja registradora: fondo grafito, botones con relieve tipo tecla, cifras en letra monoespaciada y un visor verde con el total.
 
 **En PC:**
-- Barra lateral con las secciones (Caja, Pagos y Crafteos; el candado indica que piden contraseña) y el botón **⚙ Productos** para la Gestión de Productos.
+- Barra lateral con las secciones (Caja, Pagos, Crafteos y Sorteo; el candado indica que piden contraseña) y el botón **⚙ Productos** para la Gestión de Productos.
 - Productos en teclas compactas con icono, nombre, precio y contador (×2) de las unidades que ya están en el ticket.
 - Ticket con el visor arriba (último producto tocado y total), la lista y las teclas Deshacer, Quitar, Limpiar, **Copiar concepto** y Total.
 
@@ -165,6 +179,13 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 13 · 16 de octubre de 2026 · Sorteo
+- Nueva pestaña **Sorteo**, igual que el Módulo de Sorteo de Aguila Motors, protegida con la contraseña de gerencia.
+- Lee las facturas del datáfono: solo cuentan las que tienen comprador, llevan «sorteo» en el concepto y no son venta a sí mismo; las demás salen con el motivo.
+- Boletos por monto (precio configurable) o por factura, rango de fechas y opción de dejar fuera a los empleados.
+- Sorteo en vivo premio a premio en una pantalla tipo caja registradora: tragaperras de nombres, confeti, un premio por persona, azar seguro según los boletos y lista sellada con huella.
+- Anuncio para Discord que se escribe solo, copia del último ganador y CSV.
 
 ### Versión 12 · 16 de octubre de 2026 · Copiar concepto destacado
 - En el ticket, el botón grande azul es ahora **Copiar concepto** y el pequeño, **Total**, porque el concepto es lo que más se usa.
