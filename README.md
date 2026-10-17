@@ -132,12 +132,12 @@ La página imita una caja registradora: fondo grafito, botones con relieve tipo 
 **En PC:**
 - Barra lateral con las secciones (Caja, Pagos y Crafteos; el candado indica que piden contraseña) y el botón **⚙ Productos** para la Gestión de Productos.
 - Productos en teclas compactas con icono, nombre, precio y contador (×2) de las unidades que ya están en el ticket.
-- Ticket con el visor arriba (último producto tocado y total), la lista y las teclas Deshacer, Quitar, Limpiar, **Copiar total** y Concepto.
+- Ticket con el visor arriba (último producto tocado y total), la lista y las teclas Deshacer, Quitar, Limpiar, **Copiar concepto** y Total.
 
 **En el móvil (pantallas de hasta 700px):**
 - Visor fijo arriba con el último producto, los artículos y el total.
 - Teclas de producto en dos columnas.
-- Botones fijos **Copiar total** y **Ver ticket (n)** sobre la barra de secciones, que pasa abajo como en una app.
+- Botones fijos **Copiar concepto** y **Ver ticket (n)** sobre la barra de secciones, que pasa abajo como en una app.
 
 Los importes se muestran con punto de miles (`$ 1.000`). Lo que se copia para el juego (Copiar total) sigue siendo el número sin puntos.
 
@@ -165,6 +165,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 12 · 16 de octubre de 2026 · Copiar concepto destacado
+- En el ticket, el botón grande azul es ahora **Copiar concepto** y el pequeño, **Total**, porque el concepto es lo que más se usa.
+- En el móvil, el botón fijo de abajo también copia el concepto (el total sigue en el ticket).
 
 ### Versión 11 · 13 de octubre de 2026 · Pagos por rangos
 - La pestaña Facturas pasa a ser **Pagos**, con el estilo del módulo de pagos de Aguila Motors adaptado al Terminal TPV: tarjetas (cobrado, total a pagar, rascas y empleado de la semana), ranking por persona con rango, barra, IBAN, avisos y lo que hay que pagarle, total a pagar en el visor y botón **Copiar para Discord**. Las tablas de antes quedan en *Ver detalle*.

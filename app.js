@@ -2645,7 +2645,7 @@ function setupLayout() {
     byId("btn-add-product")?.click();
   });
 
-  byId("m-copy-total")?.addEventListener("click", () => byId("btn-copy-total")?.click());
+  byId("m-copy-concept")?.addEventListener("click", () => byId("btn-copy-concept")?.click());
   byId("m-view-ticket")?.addEventListener("click", () => {
     document.querySelector("#tab-caja .ticket-card")?.scrollIntoView({ block: "start", behavior: "smooth" });
   });
