@@ -242,6 +242,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 25 · 25 de octubre de 2026 · Avisos de la Caja
+- Aviso breve abajo (como en Aguila Motors) al añadir, quitar (clic derecho o Quitar), borrar una línea, cambiar la cantidad, Deshacer, Limpiar, copiar el total o el concepto y en los cobros por partes. Verde al añadir, naranja al quitar y azul al copiar; en el móvil sale encima de los botones.
+- Copiar con el ticket vacío ya no abre una alerta: avisa en el mismo recuadro.
+
 ### Versión 24 · 25 de octubre de 2026 · Rangos altos en Nuevo empleado
 - Arreglado: el desplegable de rango de «Nuevo empleado» no dejaba elegir Jefe ni Jefe Tribal al Jefe Tribal (se rellenaba antes de terminar el inicio de sesión).
 

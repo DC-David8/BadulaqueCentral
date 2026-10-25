@@ -540,6 +540,47 @@ small.warn { color: var(--warn); }
 .pg-close-txt { display: grid; gap: 3px; font-size: 13px; }
 .pg-close-btns { display: flex; gap: 8px; }
 
+/* --- Avisos de la Caja (como en Aguila Motors) -------------------------- */
+.add-toast {
+  position: fixed;
+  right: 26px;
+  bottom: 26px;
+  z-index: 300;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #101a26;
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 24px rgba(58, 160, 255, 0.35);
+  color: #e6e9ee;
+  font: 500 14px var(--f-ui);
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.add-toast b { color: #8fcaff; }
+.add-toast[data-kind="add"] { border-color: #4ed696; box-shadow: 0 0 24px rgba(78, 214, 150, 0.3); }
+.add-toast[data-kind="add"] b { color: #7cffc4; }
+.add-toast[data-kind="remove"] { border-color: #f2bf7a; box-shadow: 0 0 24px rgba(242, 191, 122, 0.25); }
+.add-toast[data-kind="remove"] b { color: #f6d39f; }
+.add-toast.is-visible { opacity: 1; transform: translateY(0); }
+@media (max-width: 1100px) {
+  .add-toast {
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    bottom: calc(146px + env(safe-area-inset-bottom));
+    justify-content: center;
+    text-align: center;
+    font-size: 13.5px;
+  }
+}
+
 /* --- Despidos ------------------------------------------------------------ */
 .w-fired { background: #ff6b6b14; color: #ff9b9b; border: 1px solid #ff6b6b66; }
 .emp-fired { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--key); }

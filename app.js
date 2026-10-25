@@ -1826,7 +1826,38 @@ function setupCaja() {
   const ticketBody = byId("ticket-body");
   const ticketTotal = byId("ticket-total");
 
-  function addItemDelta(name, price, delta) {
+  // Aviso breve abajo (como en Aguila Motors): showToast("✔ Añadido", nombre, " · $ 800").
+  let toastTimer = null;
+  function showToast(lead, bold = "", tail = "", kind = "") {
+    let el = byId("add-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "add-toast";
+      el.className = "add-toast";
+      el.setAttribute("role", "status");
+    }
+    // Con una ventana abierta (cobros por partes) el aviso va dentro, para que se vea encima.
+    const host = document.querySelector("dialog[open]") || document.body;
+    if (el.parentNode !== host) host.appendChild(el);
+    el.textContent = "";
+    el.append(`${lead} `);
+    if (bold) {
+      const b = document.createElement("b");
+      b.textContent = bold.length > 60 ? `${bold.slice(0, 57)}…` : bold;
+      el.append(b);
+    }
+    if (tail) el.append(tail);
+    el.dataset.kind = kind;
+    el.classList.add("is-visible");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("is-visible"), 1600);
+  }
+
+  function addItemDelta(name, price, delta, quiet = false) {
+    if (!quiet) {
+      if (delta > 0) showToast("✔ Añadido", name, ` · ${fmtMoney(price)}`, "add");
+      else if (state.cart[name]) showToast("➖ Quitado", name, ` · ${fmtMoney(price)}`, "remove");
+    }
     const row = state.cart[name];
     if (!row) {
       if (delta > 0) state.cart[name] = { price, qty: delta };
@@ -1872,8 +1903,13 @@ function setupCaja() {
       );
       qtyInput.addEventListener("change", () => {
         const n = Math.floor(Number(qtyInput.value));
-        if (!Number.isFinite(n) || n <= 0) delete state.cart[name];
-        else state.cart[name].qty = n;
+        if (!Number.isFinite(n) || n <= 0) {
+          delete state.cart[name];
+          showToast("🗑 Borrado del ticket", name, "", "remove");
+        } else {
+          state.cart[name].qty = n;
+          showToast("✎ Cantidad", name, ` · ×${n}`);
+        }
         renderTicket();
       });
 
@@ -1885,6 +1921,7 @@ function setupCaja() {
       trashBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         delete state.cart[name];
+        showToast("🗑 Borrado del ticket", name, "", "remove");
         if (state.selected === name) state.selected = null;
         renderTicket();
       });
@@ -2031,6 +2068,7 @@ function setupCaja() {
         b.addEventListener("click", async () => {
           const ok = await copyText(text);
           if (!ok) openCopyFallback(text);
+          else showToast(`📋 Cobro ${i + 1} de ${charges.length} ·`, label === "Copiar total" ? `total ${fmtMoney(c.total)}` : "concepto copiado", "", "copy");
           tr.classList.add("is-selected");
         });
         return b;
@@ -2128,8 +2166,12 @@ function setupCaja() {
 
   byId("btn-undo").addEventListener("click", () => {
     const op = state.history.pop();
-    if (!op) return;
+    if (!op) {
+      showToast("↩ Nada que deshacer");
+      return;
+    }
     const [name, delta] = op;
+    showToast(delta > 0 ? "↩ Deshecho: quitado" : "↩ Deshecho: vuelto a añadir", name);
     const item = state.cart[name];
     const price = getAllProducts().find((p) => p.name === name)?.price || state.cart[name]?.price || 0;
     if (!item) {
@@ -2143,12 +2185,16 @@ function setupCaja() {
   });
 
   byId("btn-remove").addEventListener("click", () => {
-    if (!state.selected) return;
+    if (!state.selected) {
+      showToast("☝ Selecciona una línea del ticket para quitarla");
+      return;
+    }
     const price = getAllProducts().find((p) => p.name === state.selected)?.price || state.cart[state.selected]?.price || 0;
     addItemDelta(state.selected, price, -1);
   });
 
   byId("btn-clear").addEventListener("click", () => {
+    showToast(Object.keys(state.cart).length ? "🧹 Ticket limpio" : "🧹 El ticket ya estaba vacío", "", "", "remove");
     state.cart = {};
     state.history = [];
     state.selected = null;
@@ -2158,15 +2204,20 @@ function setupCaja() {
 
   byId("btn-copy-total").addEventListener("click", async () => {
     const total = Object.values(state.cart).reduce((acc, r) => acc + r.price * r.qty, 0);
+    if (!total) {
+      showToast("📋 El ticket está vacío: no hay total que copiar");
+      return;
+    }
     const ok = await copyText(String(total));
     if (!ok) openCopyFallback(String(total));
+    else showToast("📋 Total copiado", fmtMoney(total), "", "copy");
   });
 
   // Lo que copia "Concepto": completo si cabe; si no, abreviado; si no, en cobros.
   byId("btn-copy-concept").addEventListener("click", async () => {
     const plan = conceptPlan();
     if (plan.kind === "empty") {
-      alert("El ticket esta vacio.");
+      showToast("📋 El ticket está vacío: no hay concepto que copiar");
       return;
     }
     if (plan.kind === "split") {
@@ -2175,6 +2226,7 @@ function setupCaja() {
     }
     const ok = await copyText(plan.text);
     if (!ok) openCopyFallback(plan.text);
+    else showToast("📋 Concepto copiado", plan.text, "", "copy");
   });
 
   renderTicket();
