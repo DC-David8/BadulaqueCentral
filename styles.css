@@ -508,6 +508,21 @@ th.center, td.center { text-align: center; }
 .sx-side button { height: 50px; }
 .sx-note { margin: 0; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-2); font-size: 13px; color: #c3cad3; }
 
+/* --- Facturas desde el Discord (bot) ------------------------------------ */
+.dlog-box { margin-bottom: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--accent); background: var(--accent-bg); }
+.dlog-box[hidden] { display: none; }
+.dlog-title { margin-bottom: 10px; font-weight: 700; }
+.dlog-row { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.dlog-row label { display: flex; flex-direction: column; gap: 4px; font: 600 11.5px var(--f-mono); color: var(--muted); }
+.dlog-row input[type="date"] { width: 160px; color-scheme: dark; }
+.dlog-row button { height: 42px; }
+.dlog-range { margin-top: 10px; font-size: 12.5px; }
+.dlog-tz { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
+.dlog-tz .flag { flex: none; width: 20px; height: 14px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15); }
+.dlog-status { margin-top: 8px; font-size: 12.5px; line-height: 1.4; color: #c3cad3; }
+.dlog-status.ok { color: var(--lcd); }
+.dlog-status.err { color: var(--danger); }
+
 /* --- Sesion (nube) ------------------------------------------------------ */
 .auth-user { display: flex; align-items: center; gap: 10px; margin-left: auto; padding: 5px 6px 5px 5px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
 .auth-user[hidden] { display: none; }

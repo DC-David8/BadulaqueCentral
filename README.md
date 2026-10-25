@@ -45,6 +45,23 @@ Quién es Jefe lo decide **la base de datos** (funciones `es_jefe` y `es_jefe_tr
 
 El SQL está en `supabase/1_empleados_y_permisos.sql`. El programa de escritorio sigue con contraseñas, porque el inicio de sesión de Discord necesita la web.
 
+## Facturas desde el Discord del Badulaque (bot)
+
+Como en Aguila Motors, un **bot** copia el canal de facturas del Discord del Badulaque a Supabase (tabla `discord_log`, solo la leen los Jefes). En **Pagos**, los Jefes ven el cuadro **📥 Facturas desde el Discord del Badulaque**:
+
+1. Elige **Desde / Hasta**. Por defecto sale la semana de pago: del **domingo 00:00 al sábado 24:00 en hora de España**, que en Guatemala es del **sábado 16:00 al sábado 16:00** (17:00 cuando España está en horario de invierno). Debajo se ve el corte en los dos países.
+2. Pulsa **Traer facturas**: la página pide al bot lo último del canal y carga las facturas de esas fechas ya procesadas.
+3. Copia el log de **Rasca y Gana** del Discord de la ciudad y pulsa **Pegar + Procesar**: se añade debajo sin borrar las facturas. **Limpiar** lo vacía todo.
+
+El lector entiende el formato nuevo del datáfono (importe como título, concepto en cursiva y bloque `ansi` con colores), tanto con el bot como pegando a mano.
+
+**Puesta en marcha** (una vez), con los archivos de `supabase/`:
+- `2_bot_tabla.sql`: la tabla `discord_log` (SQL Editor → Run).
+- `3_bot_funcion_leer-logs.ts`: la función `leer-logs` (Edge Functions → Via Editor), con los secretos `DISCORD_BOT_TOKEN` y `LOG_CHANNEL_ID` y sin «Verify JWT».
+- `4_bot_cada_5_minutos.sql`: el aviso cada 5 minutos (SQL Editor → Run).
+
+El token del bot va **solo** en los secretos de Supabase.
+
 ## Rangos y comisión
 
 Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (facturas pagadas, datáfono incluido, más sus rascas), según su rango:
@@ -193,6 +210,13 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 16 · 25 de octubre de 2026 · Facturas desde Discord
+- Pagos: cuadro **📥 Facturas desde el Discord del Badulaque** (solo Jefes). Se eligen las fechas y **Traer facturas** las carga ya procesadas, con el bot de Supabase.
+- Semana de pago en **hora de España** (domingo a sábado), con el corte en España y Guatemala y sus banderas.
+- **Pegar + Procesar** añade las rascas debajo de las facturas traídas.
+- El lector entiende el **formato nuevo del datáfono** (título, cursiva y bloque `ansi`).
+- Archivos del bot en `supabase/` (tabla, función `leer-logs` y aviso cada 5 minutos).
 
 ### Versión 15 · 25 de octubre de 2026 · Nube activa
 - La nube queda **activa** con el proyecto de Supabase del Badulaque: para entrar hay que iniciar sesión con Discord. Los Jefes ven todo; el resto de la plantilla, la Caja.

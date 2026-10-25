@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="styles.css?v=16" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -150,6 +150,16 @@
       <div class="split pg-split">
         <section class="card">
           <h2>Texto de Discord</h2>
+          <div id="dlog-box" class="dlog-box" hidden>
+            <div class="dlog-title">📥 Facturas desde el Discord del Badulaque</div>
+            <div class="dlog-row">
+              <label>Desde (domingo) <input type="date" id="dlog-from" class="text-input" /></label>
+              <label>Hasta (sábado) <input type="date" id="dlog-to" class="text-input" /></label>
+              <button type="button" id="dlog-load" class="primary">Traer facturas</button>
+            </div>
+            <div id="dlog-range" class="dlog-range"></div>
+            <div id="dlog-status" class="dlog-status">Es la misma semana en los dos países: cierra el sábado a medianoche en España, que en Guatemala es el sábado por la tarde. Después pega las rascas con <strong>Pegar + Procesar</strong>.</div>
+          </div>
           <textarea id="conta-input" class="terminal-input" rows="14" placeholder="Pega aquí los mensajes de facturas, datáfono y Rasca y Gana, y pulsa Procesar"></textarea>
           <div class="actions">
             <button type="button" class="primary" id="conta-paste">Pegar + Procesar</button>
@@ -158,7 +168,7 @@
             <button type="button" id="conta-export">Exportar CSV</button>
           </div>
           <div class="pg-steps">
-            <div class="pg-step"><b>1</b>Copia los mensajes de facturas, datáfono y Rasca y Gana en Discord</div>
+            <div class="pg-step"><b>1</b>Pulsa <strong>Traer facturas</strong> (o cópialas a mano) y copia el log de Rasca y Gana en Discord</div>
             <div class="pg-step"><b>2</b>Pulsa <strong>Pegar + Procesar</strong></div>
             <div class="pg-step"><b>3</b>Revisa el ranking y pulsa <strong>Copiar para Discord</strong></div>
           </div>
@@ -434,7 +444,7 @@
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
-    <footer class="app-version">Versión 15 · Nube activa</footer>
+    <footer class="app-version">Versión 16 · Facturas desde Discord</footer>
   </main>
   </div>
 
@@ -655,6 +665,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>
