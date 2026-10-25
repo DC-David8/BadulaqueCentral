@@ -62,6 +62,17 @@ El lector entiende el formato nuevo del datáfono (importe como título, concept
 
 El token del bot va **solo** en los secretos de Supabase.
 
+## Rasca y Gana desde el Discord de la ciudad (marcador)
+
+El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter un bot. Para no copiarlo a mano mensaje a mensaje hay un **marcador** (botón de la barra de favoritos), igual que el copiador de kits de Aguila Motors.
+
+- En **Pagos → 🍎 Copiador de rascas** están el botón para arrastrar a la barra de favoritos y las instrucciones (Edge, Chrome, Firefox, Opera, Brave). Si no deja arrastrarlo, **Copiar código** y se crea el favorito a mano.
+- Se usa en **discord.com** (no en la aplicación), dentro del canal de Rasca y Gana. Sale un recuadro con la semana de pago ya puesta (domingo 00:00 a sábado 24:00, hora de España), y va contando las ventas mientras se sube con la rueda. Cuando dice **✅ Semana completa**, se pulsa **Copiar rascas de la semana**.
+- En Pagos, **Pegar + Procesar** lo añade debajo de las facturas que trajo el bot.
+- Solo lee lo que ya se ve en pantalla: no usa la cuenta, ni la API de Discord, ni manda nada a ningún sitio.
+- El lector junta las etiquetas sueltas («Vendedor:» con el nombre en la línea de abajo, tal como sale al copiar los recuadros de Discord) y acepta totales con «€».
+- Enlace directo al canal: `RASCAS_CHANNEL_URL` en `app.js` (vacío = el botón no sale).
+
 ## Rangos y comisión
 
 Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (facturas pagadas, datáfono incluido, más sus rascas), según su rango:
@@ -210,6 +221,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 19 · 25 de octubre de 2026 · Copiador de rascas
+- Pagos: botón **🍎 Copiador de rascas** con el marcador para el canal de Rasca y Gana del Discord de la ciudad y sus instrucciones.
+- El lector junta «Vendedor:», «Cantidad:», «Total:»… con el valor de la línea de abajo, acepta totales con «€» y títulos con emoji delante.
 
 ### Versión 18 · 25 de octubre de 2026 · Aviso de función sin bot
 - **Traer facturas** avisa si la función `leer-logs` responde pero no tiene el código del bot (por ejemplo, la plantilla «Hello» de Supabase) y explica cómo arreglarlo.

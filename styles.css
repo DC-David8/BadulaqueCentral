@@ -523,6 +523,16 @@ th.center, td.center { text-align: center; }
 .dlog-status.ok { color: var(--lcd); }
 .dlog-status.err { color: var(--danger); }
 
+/* --- Copiador de Rasca y Gana ------------------------------------------- */
+.rascas-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; color: #c3cad3; }
+.rascas-link { display: inline-block; padding: 6px 10px; border-radius: 8px; background: #5865f2; color: #fff; font-weight: 600; font-size: 12.5px; text-decoration: none; }
+.rascas-link[hidden] { display: none; }
+.rascas-link:hover { background: #4752c4; color: #fff; }
+.rascas-card ol { padding-left: 20px; line-height: 1.55; }
+.rascas-card h4 { margin-top: 14px; }
+.rascas-bm { display: inline-block; margin-left: 6px; padding: 5px 12px; border-radius: 8px; background: var(--accent); color: #04121f; font-weight: 700; text-decoration: none; cursor: grab; }
+kbd { padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line-2); background: var(--key-2); font: 600 12px var(--f-mono); }
+
 /* --- Sesion (nube) ------------------------------------------------------ */
 .auth-user { display: flex; align-items: center; gap: 10px; margin-left: auto; padding: 5px 6px 5px 5px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
 .auth-user[hidden] { display: none; }

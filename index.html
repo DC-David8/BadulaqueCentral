@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=18" />
+  <link rel="stylesheet" href="styles.css?v=19" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -159,6 +159,11 @@
             </div>
             <div id="dlog-range" class="dlog-range"></div>
             <div id="dlog-status" class="dlog-status">Es la misma semana en los dos países: cierra el sábado a medianoche en España, que en Guatemala es el sábado por la tarde. Después pega las rascas con <strong>Pegar + Procesar</strong>.</div>
+          </div>
+          <div class="rascas-row">
+            <span>🎟️ Rasca y Gana del Discord de la ciudad:</span>
+            <a id="rascas-channel" class="rascas-link" href="#" target="_blank" rel="noopener" hidden>Abrir canal de Rasca y Gana ↗</a>
+            <button type="button" id="rascas-install" class="small">🍎 Copiador de rascas</button>
           </div>
           <textarea id="conta-input" class="terminal-input" rows="14" placeholder="Pega aquí los mensajes de facturas, datáfono y Rasca y Gana, y pulsa Procesar"></textarea>
           <div class="actions">
@@ -444,7 +449,7 @@
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
-    <footer class="app-version">Versión 18 · Aviso de función sin bot</footer>
+    <footer class="app-version">Versión 19 · Copiador de rascas</footer>
   </main>
   </div>
 
@@ -646,6 +651,33 @@
     </div>
   </dialog>
 
+  <dialog id="rascas-dlg">
+    <form method="dialog" class="modal-card rascas-card">
+      <header class="modal-head">
+        <h3>🍎 Copiador de Rasca y Gana</h3>
+        <button value="cancel" class="ghost">Cerrar</button>
+      </header>
+      <p>Un botón para la barra de favoritos de tu navegador (Edge, Chrome, Firefox, Opera, Brave…). Dentro del canal de Rasca y Gana en <b>discord.com</b> recoge las ventas de la semana y las copia. No necesita permisos en el Discord de la ciudad: solo lee lo que ya ves en pantalla.</p>
+      <h4>Instalar (una sola vez)</h4>
+      <ol>
+        <li>Muestra la barra de favoritos. <b>Edge, Chrome, Opera, Brave:</b> <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd>. <b>Firefox:</b> clic derecho en la parte de arriba (junto a las pestañas) → <b>Barra de marcadores</b> → <b>Mostrar siempre</b>.</li>
+        <li>Arrastra este botón a la barra: <a id="rascas-bm" class="rascas-bm" href="#">🍎 Copiar rascas</a></li>
+      </ol>
+      <p class="muted">¿No te deja arrastrarlo? Pulsa <b>Copiar código</b>, luego clic derecho en la barra de favoritos → <b>Agregar favorito</b> (en Firefox: <b>Añadir marcador</b>), nombre «Copiar rascas» y pega el código en <b>URL</b>.</p>
+      <h4>Usarlo cada semana</h4>
+      <ol>
+        <li>Abre el canal de Rasca y Gana del Discord de la ciudad <b>en el navegador</b> (discord.com, no la aplicación de Discord).</li>
+        <li>Pulsa <b>🍎 Copiar rascas</b> en la barra de favoritos. Sale un recuadro azul con la semana ya puesta (la misma semana de pago, en hora de España).</li>
+        <li>Sube con la rueda del ratón hasta que diga <b>✅ Semana completa</b>.</li>
+        <li>Pulsa <b>Copiar rascas de la semana</b>, vuelve aquí y pulsa <b>Pegar + Procesar</b>: se añaden debajo de las facturas.</li>
+      </ol>
+      <footer class="actions">
+        <button type="button" id="rascas-copy-code">Copiar código</button>
+        <button type="submit" class="primary">Cerrar</button>
+      </footer>
+    </form>
+  </dialog>
+
   <dialog id="copy-fallback-modal">
     <form method="dialog" class="modal-card">
       <header class="modal-head">
@@ -665,6 +697,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>

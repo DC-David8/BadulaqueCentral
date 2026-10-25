@@ -210,11 +210,11 @@ const RE_TO = /^\s*Para:\s*(.+?)\s*$/i;
 const RE_AMOUNT = /^\s*Cantidad:\s*\$?\s*`?([\d.,]+)`?\s*$/i;
 const RE_CONCEPT = /^\s*Concepto:\s*(.+?)\s*$/i;
 const RE_TS = /^\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*$/i;
-const RE_RASCA = /^\s*Venta\s+de\s+Rasca\s+y\s+Gana\s*$/i;
+const RE_RASCA = /^[^A-Za-z0-9]*Venta\s+de\s+Rasca\s+y\s+Gana\s*[^A-Za-z0-9]*$/i;
 const RE_BUYER = /^\s*Comprador:\s*(.+?)\s*$/i;
 const RE_SELLER = /^\s*Vendedor:\s*(.+?)\s*$/i;
 const RE_QTY = /^\s*Cantidad:\s*`?(\d+)`?\s*$/i;
-const RE_TOTAL = /^\s*Total:\s*\$?\s*`?([\d.,]+)`?\s*$/i;
+const RE_TOTAL = /^\s*Total:\s*\$?\s*`?([\d.,]+)`?\s*€?\s*$/i;
 const RE_IGNORE = /^(Haz clic para reaccionar|Anadir reaccion|A\u00f1adir reaccion|Responder|Reenviar|Mas|M\u00e1s|:\w+:)$/i;
 
 // Datafono TPV (formato nuevo). El bloque se abre con la linea del importe
@@ -2042,12 +2042,26 @@ function processText(rawText) {
   // Limpia lo que a veces llega en crudo desde Discord con el formato nuevo
   // del datafono: colores ANSI ("[36mComercio:[0m"), la linea "ansi" del
   // bloque de codigo, titulos "# 150000€" y asteriscos de negrita/cursiva.
-  const lines = String(rawText || "")
+  const raw = String(rawText || "")
     .replace(/\u001b?\[[\d;]*m/g, "")
     .replace(/```[a-z]*/gi, "")
     .split(/\r?\n/)
     .filter((l) => !/^\s*ansi\s*$/i.test(l))
     .map((l) => l.replace(/^[ \t]*(?:-#|#{1,3})[ \t]+/, "").replace(/\*/g, ""));
+  // Etiqueta sola en su linea ("Vendedor:" y el nombre debajo, como sale al
+  // copiar recuadros de Discord con el copiador): se juntan en una sola linea.
+  const RE_LABEL_ONLY = /^\s*(Vendedor|Comprador|Cantidad|Total|Comercio|Cobrador|Cliente|Concepto|Emitida por|Para)\s*:?\s*$/i;
+  const lines = [];
+  for (let i = 0; i < raw.length; i++) {
+    const m = raw[i].match(RE_LABEL_ONLY);
+    const next = raw[i + 1];
+    if (m && next != null && next.trim() && !RE_LABEL_ONLY.test(next) && !/:\s*$/.test(next)) {
+      lines.push(`${m[1]}: ${next.trim()}`);
+      i++;
+    } else {
+      lines.push(raw[i]);
+    }
+  }
   const invoices = {};
   let currentKind = null; // "sent" | "paid" | "datafono"
   let current = {};
@@ -2534,7 +2548,146 @@ function setupContabilidad() {
 
   setupEmployeesModal(state, refresh);
   setupDiscordLog(refs, processCurrent, () => Object.keys(state.invoices || {}).length);
+  setupRascasCopier();
   clearState();
+}
+
+// ===================== Copiador de Rasca y Gana (marcador) =====================
+// El log de Rasca y Gana esta en el Discord de la ciudad, donde no podemos
+// meter un bot. Este marcador se ejecuta en discord.com y solo lee los mensajes
+// que ya ves en pantalla (no usa tu cuenta ni la API, no se desplaza solo).
+// Recoge los de la semana (hora de España) mientras subes con la rueda y los
+// copia. Igual que el copiador de kits de Aguila Motors.
+// Enlace directo al canal del log de Rasca y Gana en el Discord de la ciudad
+// (clic derecho en el canal → Copiar enlace). Vacio = no se muestra el boton.
+const RASCAS_CHANNEL_URL = "";
+
+function baduRascasCopier() {
+  if (window.__baduRascas) { window.__baduRascas.show(); return; }
+  if (!/discord\.com$/.test(location.hostname)) { alert("Abre el canal de Rasca y Gana en discord.com (en el navegador, no en la aplicación) y pulsa otra vez el marcador."); return; }
+  const EPOCH = 1420070400000n;
+  const seen = new Map();
+  const tsOf = (id) => { try { return Number((BigInt(id) >> 22n) + EPOCH); } catch { return 0; } };
+  const madrid = (ms) => {
+    const p = {};
+    for (const x of new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Madrid", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", weekday: "short", hourCycle: "h23" }).formatToParts(new Date(ms))) p[x.type] = x.value;
+    return { y: +p.year, m: +p.month, d: +p.day, h: +p.hour % 24, mi: +p.minute, s: +p.second, wd: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday) };
+  };
+  const midnight = (iso, add = 0) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const t = Date.UTC(y, m - 1, d + add);
+    let g = t;
+    for (let i = 0; i < 3; i++) { const p = madrid(g); g += t - Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi, p.s); }
+    return g;
+  };
+  const md = madrid(Date.now());
+  const today = Date.UTC(md.y, md.m - 1, md.d);
+  const startDay = new Date(today - (md.wd === 0 ? 7 : md.wd) * 86400000);
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const fmt = (ms) => new Date(ms).toLocaleString("es-ES", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).replace(/,/g, "");
+
+  let chan = "";
+  const grab = () => {
+    const cur = (location.pathname.match(/\/channels\/[^/]+\/(\d+)/) || [])[1] || "";
+    if (cur !== chan) { chan = cur; seen.clear(); }
+    for (const li of document.querySelectorAll('li[id^="chat-messages-"]')) {
+      const parts = li.id.split("-");
+      const id = parts.pop();
+      if (!/^\d+$/.test(id) || (chan && parts.pop() !== chan)) continue;
+      const txt = (li.innerText || "").trim();
+      if (txt) seen.set(id, txt);
+    }
+    update();
+  };
+
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;top:70px;right:20px;z-index:99999;width:320px;background:#14171b;color:#e6e9ee;border:1px solid #3aa0ff;border-radius:12px;padding:12px 14px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)";
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:14px">🍎 Copiador de Rasca y Gana</b><button data-x style="background:none;border:0;color:#aaa;font-size:18px;cursor:pointer">×</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <label style="flex:1;font-size:11px;opacity:.8">Desde (domingo)<input data-f type="date" style="width:100%;margin-top:2px;background:#0f1216;color:#fff;border:1px solid #2f353d;border-radius:6px;padding:4px;color-scheme:dark"></label>
+      <label style="flex:1;font-size:11px;opacity:.8">Hasta (sábado)<input data-t type="date" style="width:100%;margin-top:2px;background:#0f1216;color:#fff;border:1px solid #2f353d;border-radius:6px;padding:4px;color-scheme:dark"></label>
+    </div>
+    <div data-s style="margin:8px 0;min-height:54px"></div>
+    <button data-c style="width:100%;padding:9px;border:0;border-radius:8px;background:#3aa0ff;color:#04121f;font-weight:700;cursor:pointer">Copiar rascas de la semana</button>
+    <div style="font-size:11px;opacity:.6;margin-top:6px">Solo lee lo que ya ves en pantalla. Ve subiendo con la rueda del ratón.</div>`;
+  document.body.appendChild(box);
+  const $ = (s) => box.querySelector(s);
+  $("[data-f]").value = iso(startDay);
+  $("[data-t]").value = iso(new Date(startDay.getTime() + 6 * 86400000));
+
+  const inRange = () => {
+    const a = midnight($("[data-f]").value), b = midnight($("[data-t]").value, 1);
+    const list = [...seen.entries()].map(([id, t]) => ({ id, t, ts: tsOf(id) })).sort((x, y) => x.ts - y.ts);
+    return { a, b, list, sel: list.filter((m) => m.ts >= a && m.ts < b) };
+  };
+  function update() {
+    if (!$("[data-f]").value || !$("[data-t]").value) return;
+    const { a, b, list, sel } = inRange();
+    const oldest = list[0]?.ts, newest = list[list.length - 1]?.ts;
+    const n = sel.filter((m) => /rasca\s+y\s+gana/i.test(m.t)).length;
+    let s = `<b>${n}</b> ventas de Rasca y Gana recogidas de esa semana.<br>`;
+    if (!list.length) s += "⏳ No veo mensajes: abre el canal de Rasca y Gana.";
+    else if (oldest >= a) s += `<span style="color:#f2bf7a">⬆ Sigue subiendo hasta pasar el <b>${fmt(a)}</b> (tu hora). Ahora llegas al ${fmt(oldest)}.</span>`;
+    else if (newest < b && b < Date.now() - 60000) s += `<span style="color:#f2bf7a">⬇ Baja hasta pasar el <b>${fmt(b)}</b> (tu hora).</span>`;
+    else s += `<span style="color:#7cffc4">✅ Semana completa. Pulsa Copiar.</span>`;
+    if ($("[data-s]").innerHTML !== s) $("[data-s]").innerHTML = s;
+  }
+
+  $("[data-f]").addEventListener("change", update);
+  $("[data-t]").addEventListener("change", update);
+  $("[data-x]").addEventListener("click", () => { box.style.display = "none"; });
+  $("[data-c]").addEventListener("click", async () => {
+    grab();
+    const { sel } = inRange();
+    const text = sel.map((m) => m.t).join("\n\n");
+    if (!text) { $("[data-s]").innerHTML += "<br>No hay mensajes de esa semana todavía."; return; }
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch {}
+    if (!ok) {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand("copy"); } catch {}
+      ta.remove();
+    }
+    $("[data-c]").textContent = ok ? `✅ Copiados ${sel.length} mensajes` : "No se pudo copiar";
+    setTimeout(() => { $("[data-c]").textContent = "Copiar rascas de la semana"; }, 3000);
+  });
+
+  const obs = new MutationObserver((muts) => {
+    if (muts.every((m) => box.contains(m.target))) return;
+    clearTimeout(window.__baduRascasT);
+    window.__baduRascasT = setTimeout(grab, 150);
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+  window.__baduRascas = { show: () => { box.style.display = ""; grab(); } };
+  grab();
+}
+
+function rascasBookmarkletHref() {
+  return "javascript:" + encodeURIComponent(`(${baduRascasCopier.toString()})();`);
+}
+
+function setupRascasCopier() {
+  const dlg = byId("rascas-dlg");
+  const open = byId("rascas-install");
+  if (!dlg || !open) return;
+  const link = byId("rascas-bm");
+  link.href = rascasBookmarkletHref();
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    alert("No lo pulses aquí: arrástralo a tu barra de favoritos y úsalo dentro de Discord.");
+  });
+  open.addEventListener("click", () => dlg.showModal());
+  byId("rascas-copy-code")?.addEventListener("click", async () => {
+    const ok = await copyText(link.href);
+    byId("rascas-copy-code").textContent = ok ? "✅ Código copiado" : "No se pudo copiar";
+  });
+  const chan = byId("rascas-channel");
+  if (chan) {
+    chan.hidden = !RASCAS_CHANNEL_URL;
+    if (RASCAS_CHANNEL_URL) chan.href = RASCAS_CHANNEL_URL;
+  }
 }
 
 // ===================== Facturas desde el Discord del Badulaque =====================
