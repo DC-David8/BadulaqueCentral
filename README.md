@@ -93,6 +93,16 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 - Con la nube: pierde el acceso a la página aunque inicie sesión con su Discord. Solo el Jefe Tribal despide o readmite a un Jefe, y nadie puede despedirse a sí mismo. SQL: `supabase/6_despidos.sql`.
 - Sin la nube (programa de escritorio) el registro se guarda en ese equipo.
 
+## Roles de Discord para anuncios
+
+| Rol | Etiqueta |
+|---|---|
+| Trabajadores | `<@&1563907257073143919>` |
+| Jefatura | `<@&1556057218133262336>` |
+| Empleado de la semana | `<@&1364707155130712195>` |
+
+En `app.js`: `ROLE_TAG_TRABAJADORES`, `ROLE_TAG_JEFATURA` y `EMPLOYEE_OF_WEEK_TAG`.
+
 ## Rangos y comisión
 
 Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (facturas pagadas, datáfono incluido, más sus rascas), según su rango:

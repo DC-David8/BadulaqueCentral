@@ -495,6 +495,9 @@ function fullName(e) {
 
 // Rol de Discord del empleado de la semana (quien mas cobra).
 const EMPLOYEE_OF_WEEK_TAG = "<@&1364707155130712195>";
+// Roles de Discord para etiquetar en los anuncios.
+const ROLE_TAG_TRABAJADORES = "<@&1563907257073143919>";
+const ROLE_TAG_JEFATURA = "<@&1556057218133262336>";
 
 // ===================== Reglas de la semana =====================
 // Minimo semanal (facturas pagadas + rascas): quien cobra y no llega se lleva
