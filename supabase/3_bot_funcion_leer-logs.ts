@@ -1,7 +1,8 @@
 // ============================================================================
 // Badulaque Central · Fase 2: bot de facturas (paso 2 de 3)
 // Supabase → Edge Functions → Deploy a new function → Via Editor
-// Nombre de la función: leer-logs  ·  pega todo este archivo y pulsa Deploy.
+// Nombre de la función: leer-logs. En el editor deja el archivo index.ts,
+// BORRA su contenido (la plantilla "Hello") y pega todo este archivo. Deploy.
 // Después, en los ajustes de la función, DESACTIVA "Verify JWT" (o "Enforce
 // JWT verification"): así la puede llamar el aviso cada 5 minutos. La función
 // solo copia el canal de facturas a la tabla; no devuelve ningún dato.

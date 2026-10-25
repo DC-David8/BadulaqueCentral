@@ -2686,7 +2686,10 @@ function setupDiscordLog(refs, processCurrent, invoiceCount) {
         }).finally(() => clearTimeout(timer));
         const j = await r.json().catch(() => ({}));
         if (r.ok && j.ok !== false && typeof j.nuevos === "number") botNew = j.nuevos;
-        if (!r.ok || j.ok === false) botNote = ` ⚠ El bot no respondió bien${j.error ? ` (${escapeHtml(String(j.error).slice(0, 160))})` : ""}; se usó lo ya guardado.`;
+        if (r.ok && j.ok !== true && j.ok !== false) {
+          // Responde, pero no es el bot (p. ej. la plantilla "Hello" de Supabase).
+          botNote = " ⚠ La función <b>leer-logs</b> no tiene el código del bot: en Supabase, borra el contenido de su <b>index.ts</b>, pega el de <b>3_bot_funcion_leer-logs.ts</b> y pulsa Deploy.";
+        } else if (!r.ok || j.ok === false) botNote = ` ⚠ El bot no respondió bien${j.error ? ` (${escapeHtml(String(j.error).slice(0, 160))})` : ""}; se usó lo ya guardado.`;
       } catch {
         botNote = " ⚠ No se pudo avisar al bot; se usó lo ya guardado.";
       }

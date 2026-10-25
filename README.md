@@ -57,7 +57,7 @@ El lector entiende el formato nuevo del datáfono (importe como título, concept
 
 **Puesta en marcha** (una vez), con los archivos de `supabase/`:
 - `2_bot_tabla.sql`: la tabla `discord_log` (SQL Editor → Run).
-- `3_bot_funcion_leer-logs.ts`: la función `leer-logs` (Edge Functions → Via Editor), con los secretos `DISCORD_BOT_TOKEN` y `LOG_CHANNEL_ID` y sin «Verify JWT».
+- `3_bot_funcion_leer-logs.ts`: la función `leer-logs` (Edge Functions → Via Editor; su contenido va **dentro de `index.ts`**, sustituyendo la plantilla), con los secretos `DISCORD_BOT_TOKEN` y `LOG_CHANNEL_ID` y sin «Verify JWT».
 - `4_bot_cada_5_minutos.sql`: el aviso cada 5 minutos (SQL Editor → Run).
 
 El token del bot va **solo** en los secretos de Supabase.
@@ -210,6 +210,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 18 · 25 de octubre de 2026 · Aviso de función sin bot
+- **Traer facturas** avisa si la función `leer-logs` responde pero no tiene el código del bot (por ejemplo, la plantilla «Hello» de Supabase) y explica cómo arreglarlo.
 
 ### Versión 17 · 25 de octubre de 2026 · Diagnóstico del bot
 - Si **Traer facturas** no encuentra mensajes en las fechas elegidas, dice cuántos copió el bot y de qué fechas hay mensajes guardados, o que la tabla está vacía y qué revisar (ID del canal, permisos del bot y Message Content Intent).
