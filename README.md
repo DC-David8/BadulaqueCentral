@@ -77,6 +77,7 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 
 - **Mínimo semanal: $ 20.000** (facturas pagadas + rascas). Quien cobra y no llega se lleva un **strike**; salen en Pagos debajo del ranking, en «Totales empleados» y en el texto de «Copiar para Discord». Los que tienen «No cobra» no llevan strikes.
 - **3 strikes seguidos = despido** (🚫). Los strikes se borran en cuanto la persona llega al mínimo una semana. En «Gestión de empleados» sale al lado del nombre cuántos lleva.
+- El **Jefe Tribal** (100 %, solo el dueño) no lleva strikes ni compite por el bono.
 - **Bono del empleado de la semana: $ 10.000** para quien más cobra (si hay empate, para todos). Se suma a lo que se le paga, al Total a pagar y al texto de Discord.
 - **Cerrar semana** (solo con la nube, para los Jefes): cuando hayas pagado, pulsa **Cerrar semana** en Pagos. Se guarda lo que vendió y cobró cada uno y quién llevó strike (tabla `pagos_semanas`, SQL `supabase/5_semanas_strikes.sql`). **Reabrir** la borra si te equivocaste.
 - En el programa de escritorio (sin nube) no hay historial: los avisos dicen solo «Strike», sin contar semanas.
@@ -103,7 +104,7 @@ Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (fa
 | Cajero Experimentado | 45 % |
 | Encargado | 50 % |
 | Jefe | 50 % |
-| Jefe Tribal | 50 % |
+| Jefe Tribal | 100 % (solo el dueño) |
 
 Las facturas pendientes de pago no cuentan. Los rangos y porcentajes se cambian en `app.js` → `RANKS`.
 
@@ -240,6 +241,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 23 · 25 de octubre de 2026 · Jefe Tribal al 100 %
+- Comisión del Jefe Tribal al 100 % (rango solo del dueño). No lleva strikes ni compite por el bono del empleado de la semana.
 
 ### Versión 22 · 25 de octubre de 2026 · Despidos
 - «Despedir» con motivo en lugar de «Eliminar», registro de Despedidos y Readmitir.

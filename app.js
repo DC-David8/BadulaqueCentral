@@ -478,7 +478,7 @@ const RANKS = [
   { label: "Cajero Experimentado", pct: 0.45 },
   { label: "Encargado", pct: 0.50 },
   { label: "Jefe", pct: 0.50 },
-  { label: "Jefe Tribal", pct: 0.50 },
+  { label: "Jefe Tribal", pct: 1.00 }, // solo el dueño
 ];
 
 function pctForRank(rank) {
@@ -504,7 +504,9 @@ const EMPLOYEE_OF_WEEK_TAG = "<@&1364707155130712195>";
 const WEEK_MIN = 20000;
 const WEEK_BONUS = 10000; // bono del empleado de la semana (quien mas cobra)
 const STRIKE_MAX = 3;
-let STRIKE_HIST = []; // semanas cerradas, la mas reciente primero (solo con la nube)
+let STRIKE_HIST = [];
+// El Jefe Tribal (el dueño, 100 %) no compite: ni bono del empleado de la semana ni strikes.
+const isOwnerRank = (rank) => normalizeKeySimple(rank || "") === normalizeKeySimple("Jefe Tribal"); // semanas cerradas, la mas reciente primero (solo con la nube)
 
 async function loadStrikeHist() {
   if (!cloudOn() || !isJefe()) {
@@ -2479,9 +2481,10 @@ function setupContabilidad() {
     });
     rows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "es"));
     // Empleado de la semana: quien mas cobra (si hay empate, todos) se lleva el bono.
-    const maxPayout = Math.max(0, ...rows.map((r) => (r.emp && !r.noPay ? r.payout : 0)));
+    const competes = (r) => r.emp && !r.noPay && !isOwnerRank(r.rank);
+    const maxPayout = Math.max(0, ...rows.map((r) => (competes(r) ? r.payout : 0)));
     for (const r of rows) {
-      r.bonus = maxPayout > 0 && r.emp && !r.noPay && r.payout === maxPayout ? WEEK_BONUS : 0;
+      r.bonus = maxPayout > 0 && competes(r) && r.payout === maxPayout ? WEEK_BONUS : 0;
       r.toPay = r.payout + r.bonus;
     }
     return rows;
@@ -2570,7 +2573,7 @@ function setupContabilidad() {
       return i < 0 ? -1 : i;
     };
     const idle = employees
-      .filter((e) => !isEmployeeNoPay(fullName(e)) && grossOf(e) < WEEK_MIN)
+      .filter((e) => !isEmployeeNoPay(fullName(e)) && !isOwnerRank(e.rank) && grossOf(e) < WEEK_MIN)
       .sort((a, b) => rankIdx(b) - rankIdx(a) || fullName(a).localeCompare(fullName(b), "es"));
     lastSnapshot = {
       rows: employees.map((e) => {
@@ -2585,7 +2588,7 @@ function setupContabilidad() {
           payout: r && !noPay ? r.toPay : 0,
           bonus: r && !noPay ? r.bonus : 0,
           noPay,
-          strike: !noPay && (r ? r.total : 0) < WEEK_MIN,
+          strike: !noPay && !isOwnerRank(e.rank) && (r ? r.total : 0) < WEEK_MIN,
         };
       }),
       total: invSummary.paid_total + salesSummary.total,
@@ -3201,12 +3204,13 @@ function setupEmployeesModal(state, refreshPagos) {
     // Primero quien cobra (de mas a menos); los que no cobran, al final.
     totalsRows.sort((a, b) => a.noPay - b.noPay || b.payout - a.payout || a.name.localeCompare(b.name, "es"));
     // Bono del empleado de la semana y strikes (no llegar al minimo).
-    const maxPayout = Math.max(0, ...totalsRows.map((r) => (r.noPay ? 0 : r.payout)));
+    const competes = (r) => !r.noPay && !isOwnerRank(r.rank);
+    const maxPayout = Math.max(0, ...totalsRows.map((r) => (competes(r) ? r.payout : 0)));
     const wk = payWeekKey();
     for (const r of totalsRows) {
-      r.bonus = maxPayout > 0 && !r.noPay && r.payout === maxPayout ? WEEK_BONUS : 0;
+      r.bonus = maxPayout > 0 && competes(r) && r.payout === maxPayout ? WEEK_BONUS : 0;
       r.toPay = r.payout + r.bonus;
-      r.strike = !r.noPay && r.gross < WEEK_MIN;
+      r.strike = competes(r) && r.gross < WEEK_MIN;
       r.strikeN = r.strike ? strikesBefore(r.id, r.name, wk) + 1 : 0;
     }
   }
