@@ -242,6 +242,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 24 · 25 de octubre de 2026 · Rangos altos en Nuevo empleado
+- Arreglado: el desplegable de rango de «Nuevo empleado» no dejaba elegir Jefe ni Jefe Tribal al Jefe Tribal (se rellenaba antes de terminar el inicio de sesión).
+
 ### Versión 23 · 25 de octubre de 2026 · Jefe Tribal al 100 %
 - Comisión del Jefe Tribal al 100 % (rango solo del dueño). No lleva strikes ni compite por el bono del empleado de la semana.
 

@@ -3378,6 +3378,7 @@ function setupEmployeesAdminModal({ onChanged }) {
   // Desplegable de rangos con su %; un rango antiguo que no este en la lista se conserva.
   function fillRankSelect(select, current) {
     select.textContent = "";
+    select.disabled = false;
     const blank = document.createElement("option");
     blank.value = "";
     blank.textContent = "Sin rango";
@@ -3730,6 +3731,9 @@ function setupEmployeesAdminModal({ onChanged }) {
   }
   document.addEventListener("badu-auth", () => {
     syncCloudUi();
+    // El desplegable de "Nuevo empleado" se lleno antes de saber quien entra:
+    // se rehace con los permisos de la sesion (Jefe Tribal = todos los rangos).
+    fillRankSelect(rankInput, rankInput.value);
     refresh();
   });
   uploadBtn?.addEventListener("click", async () => {
