@@ -2673,6 +2673,7 @@ function setupDiscordLog(refs, processCurrent, invoiceCount) {
       // 1) Pide al bot que copie lo ultimo del canal (si falla, se usa lo ya guardado).
       say("Actualizando desde Discord…");
       let botNote = "";
+      let botNew = null;
       try {
         const tok = await cloud.token();
         const ctl = new AbortController();
@@ -2684,6 +2685,7 @@ function setupDiscordLog(refs, processCurrent, invoiceCount) {
           signal: ctl.signal,
         }).finally(() => clearTimeout(timer));
         const j = await r.json().catch(() => ({}));
+        if (r.ok && j.ok !== false && typeof j.nuevos === "number") botNew = j.nuevos;
         if (!r.ok || j.ok === false) botNote = ` ⚠ El bot no respondió bien${j.error ? ` (${escapeHtml(String(j.error).slice(0, 160))})` : ""}; se usó lo ya guardado.`;
       } catch {
         botNote = " ⚠ No se pudo avisar al bot; se usó lo ya guardado.";
@@ -2699,7 +2701,21 @@ function setupDiscordLog(refs, processCurrent, invoiceCount) {
         if (part.length < 1000) break;
       }
       if (!rows.length) {
-        say(`No hay mensajes guardados entre esas fechas.${botNote}`, "err");
+        // Diagnostico: que tiene guardado la tabla, para saber si falla el bot
+        // (no copia nada) o si simplemente no hubo facturas esas fechas.
+        let info = "";
+        try {
+          const first = await cloud.req("/rest/v1/discord_log?select=ts&order=ts.asc&limit=1");
+          const last = await cloud.req("/rest/v1/discord_log?select=ts&order=ts.desc&limit=1");
+          const fmtD = (iso) => new Date(iso).toLocaleString("es-ES", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+          info = first?.length
+            ? `<br>Hay mensajes guardados del <b>${fmtD(first[0].ts)}</b> al <b>${fmtD(last[0].ts)}</b>: prueba con esas fechas.`
+            : "<br>La tabla está <b>vacía</b>: el bot todavía no ha copiado nada. Revisa que <b>LOG_CHANNEL_ID</b> sea el canal de facturas, que el bot pueda ver ese canal y que tenga activado <b>Message Content Intent</b>.";
+        } catch {
+          // sin diagnostico
+        }
+        const copied = botNew === null ? "" : `<br>El bot copió <b>${botNew}</b> mensajes nuevos en esta llamada.`;
+        say(`No hay mensajes guardados entre esas fechas.${copied}${info}${botNote}`, "err");
         return;
       }
       refs.input.value = dlogToText(rows);

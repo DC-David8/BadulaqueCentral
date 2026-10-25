@@ -211,6 +211,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 17 · 25 de octubre de 2026 · Diagnóstico del bot
+- Si **Traer facturas** no encuentra mensajes en las fechas elegidas, dice cuántos copió el bot y de qué fechas hay mensajes guardados, o que la tabla está vacía y qué revisar (ID del canal, permisos del bot y Message Content Intent).
+
 ### Versión 16 · 25 de octubre de 2026 · Facturas desde Discord
 - Pagos: cuadro **📥 Facturas desde el Discord del Badulaque** (solo Jefes). Se eligen las fechas y **Traer facturas** las carga ya procesadas, con el bot de Supabase.
 - Semana de pago en **hora de España** (domingo a sábado), con el corte en España y Guatemala y sus banderas.
