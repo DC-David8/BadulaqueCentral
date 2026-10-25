@@ -73,6 +73,16 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 - El lector junta las etiquetas sueltas («Vendedor:» con el nombre en la línea de abajo, tal como sale al copiar los recuadros de Discord) y acepta totales con «€».
 - Botón **Abrir canal de Rasca y Gana ↗** junto al copiador (enlace en `RASCAS_CHANNEL_URL` de `app.js`).
 
+## Strikes, bono y cierre de semana
+
+- **Mínimo semanal: $ 20.000** (facturas pagadas + rascas). Quien cobra y no llega se lleva un **strike**; salen en Pagos debajo del ranking, en «Totales empleados» y en el texto de «Copiar para Discord». Los que tienen «No cobra» no llevan strikes.
+- **3 strikes seguidos = despido** (🚫). Los strikes se borran en cuanto la persona llega al mínimo una semana. En «Gestión de empleados» sale al lado del nombre cuántos lleva.
+- **Bono del empleado de la semana: $ 10.000** para quien más cobra (si hay empate, para todos). Se suma a lo que se le paga, al Total a pagar y al texto de Discord.
+- **Cerrar semana** (solo con la nube, para los Jefes): cuando hayas pagado, pulsa **Cerrar semana** en Pagos. Se guarda lo que vendió y cobró cada uno y quién llevó strike (tabla `pagos_semanas`, SQL `supabase/5_semanas_strikes.sql`). **Reabrir** la borra si te equivocaste.
+- En el programa de escritorio (sin nube) no hay historial: los avisos dicen solo «Strike», sin contar semanas.
+- Los ascensos no son automáticos: los das tú en «Gestión de empleados».
+- Las cifras están en `WEEK_MIN`, `WEEK_BONUS` y `STRIKE_MAX` al principio de `app.js`.
+
 ## Rangos y comisión
 
 Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (facturas pagadas, datáfono incluido, más sus rascas), según su rango:
@@ -221,6 +231,12 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 21 · 25 de octubre de 2026 · Strikes y bono
+- Mínimo semanal de $ 20.000: strikes en Pagos, Totales empleados, Gestión de empleados y el texto de Discord; con 3 seguidos, despido.
+- Bono de $ 10.000 para el empleado de la semana, incluido en lo que se le paga y en el Total a pagar.
+- Cerrar y reabrir semana (tabla `pagos_semanas`) para contar los strikes seguidos.
+- El Total a pagar de arriba ya no se corta con importes de seis cifras.
 
 ### Versión 20 · 25 de octubre de 2026 · Enlace al canal de rascas
 - Pagos: botón para abrir directamente el canal de Rasca y Gana del Discord de la ciudad.

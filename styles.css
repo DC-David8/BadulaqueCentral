@@ -367,6 +367,8 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .pg-kpi.hl { background: var(--lcd-bg); border-color: var(--lcd-line); }
 .pg-kpi.hl .val { font: 400 34px/1 var(--f-lcd); color: var(--lcd); text-shadow: 0 0 10px rgba(124, 255, 196, 0.4); }
 .pg-kpi.hl .ic { stroke: var(--lcd); }
+.pg-kpi.hl .val[data-size="m"] { font-size: 28px; }
+.pg-kpi.hl .val[data-size="s"] { font-size: 23px; }
 
 .pg-sec { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin: 4px 0 8px; }
 .pg-sec h3 { margin: 0; font: 600 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
@@ -522,6 +524,21 @@ th.center, td.center { text-align: center; }
 .dlog-status { margin-top: 8px; font-size: 12.5px; line-height: 1.4; color: #c3cad3; }
 .dlog-status.ok { color: var(--lcd); }
 .dlog-status.err { color: var(--danger); }
+
+/* --- Strikes y cierre de semana ----------------------------------------- */
+.pg-warn-box { margin-top: 6px; padding: 12px 14px; border-radius: 12px; border: 1px dashed #f2bf7a88; background: #f2bf7a0d; }
+.pg-warn-head { margin-bottom: 8px; font: 600 12px var(--f-mono); letter-spacing: 0.04em; color: var(--warn); }
+.pg-warn-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.pg-warn-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--key); font-size: 13px; }
+.pg-warn-chip.max { border-color: #ff6b6b88; background: #ff6b6b12; }
+.pg-strike-why { font: 500 12px var(--f-mono); color: var(--muted); }
+.pg-strike { padding: 2px 8px; border-radius: 6px; font: 700 11px var(--f-mono); background: #f2bf7a22; color: var(--warn); border: 1px solid #f2bf7a66; white-space: nowrap; }
+.pg-strike.max { background: #ff6b6b22; color: #ff9b9b; border-color: #ff6b6b88; }
+small.warn { color: var(--warn); }
+.pg-close { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--key); }
+.pg-close[hidden] { display: none; }
+.pg-close-txt { display: grid; gap: 3px; font-size: 13px; }
+.pg-close-btns { display: flex; gap: 8px; }
 
 /* --- Copiador de Rasca y Gana ------------------------------------------- */
 .rascas-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; color: #c3cad3; }

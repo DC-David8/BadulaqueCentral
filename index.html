@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=20" />
+  <link rel="stylesheet" href="styles.css?v=21" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -206,7 +206,7 @@
 
           <div class="pg-sec">
             <h3>Ranking de la semana</h3>
-            <span class="muted pg-sec-note">Facturas pagadas + rascas · % según rango</span>
+            <span class="muted pg-sec-note">Facturas pagadas + rascas · % según rango · mínimo $ 20.000 · bono ★ $ 10.000</span>
           </div>
           <div class="pg-list" id="pg-ranking">
             <p class="muted pg-empty">Pega el texto de Discord y pulsa Procesar para ver el ranking.</p>
@@ -222,6 +222,17 @@
             <button type="button" id="conta-manage-employees">Gestión de empleados</button>
           </div>
           <p class="muted pg-copied" id="pg-copy-status" role="status"></p>
+
+          <div class="pg-close" id="pg-close" hidden>
+            <div class="pg-close-txt">
+              <b>Cierre de semana <span id="pg-close-week"></span></b>
+              <span class="muted" id="pg-close-info"></span>
+            </div>
+            <div class="pg-close-btns">
+              <button type="button" class="ghost small" id="pg-reopen-btn" hidden>Reabrir</button>
+              <button type="button" id="pg-close-btn" disabled>Cerrar semana</button>
+            </div>
+          </div>
 
           <details class="pg-detail">
             <summary>Ver detalle (facturas y rascas por separado)</summary>
@@ -449,7 +460,7 @@
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
-    <footer class="app-version">Versión 20 · Enlace al canal de rascas</footer>
+    <footer class="app-version">Versión 21 · Strikes y bono</footer>
   </main>
   </div>
 
@@ -697,6 +708,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

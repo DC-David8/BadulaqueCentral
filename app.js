@@ -421,6 +421,67 @@ function fullName(e) {
 // Rol de Discord del empleado de la semana (quien mas cobra).
 const EMPLOYEE_OF_WEEK_TAG = "<@&1364707155130712195>";
 
+// ===================== Reglas de la semana =====================
+// Minimo semanal (facturas pagadas + rascas): quien cobra y no llega se lleva
+// un strike. Los strikes se acumulan semana a semana (semanas cerradas en
+// Pagos, tabla pagos_semanas) y se borran en cuanto llega al minimo.
+// Con STRIKE_MAX strikes seguidos toca despido.
+const WEEK_MIN = 20000;
+const WEEK_BONUS = 10000; // bono del empleado de la semana (quien mas cobra)
+const STRIKE_MAX = 3;
+let STRIKE_HIST = []; // semanas cerradas, la mas reciente primero (solo con la nube)
+
+async function loadStrikeHist() {
+  if (!cloudOn() || !isJefe()) {
+    STRIKE_HIST = [];
+    return;
+  }
+  try {
+    const r = await cloud.req("/rest/v1/pagos_semanas?select=semana,desde,hasta,datos,cerrada_por,created_at&order=semana.desc&limit=30");
+    STRIKE_HIST = Array.isArray(r) ? r : [];
+  } catch {
+    STRIKE_HIST = [];
+  }
+}
+
+function strikeRowIn(week, id, name) {
+  const key = normalizeKeySimple(name);
+  return (week?.datos?.rows || []).find((r) => (id != null && r.id != null && String(r.id) === String(id)) || normalizeKeySimple(r.name) === key);
+}
+
+// Strikes seguidos en semanas cerradas anteriores a "beforeWeek" (AAAA-MM-DD;
+// vacio = todas). Una semana en la que llego al minimo corta la cuenta.
+function strikesBefore(id, name, beforeWeek = "") {
+  let n = 0;
+  for (const w of STRIKE_HIST) {
+    if (beforeWeek && String(w.semana) >= beforeWeek) continue;
+    const r = strikeRowIn(w, id, name);
+    if (!r || r.noPay) continue;
+    if (r.strike) n++;
+    else break;
+  }
+  return n;
+}
+
+// Sin la nube (programa de escritorio) no hay historial: solo "Strike".
+function strikeLabel(n) {
+  if (!cloudOn()) return "Strike";
+  return n >= STRIKE_MAX ? `Strike ${n}/${STRIKE_MAX} · despido` : `Strike ${n}/${STRIKE_MAX}`;
+}
+
+function strikeReason(gross) {
+  return gross > 0 ? `no llegó al mínimo: ${fmtMoney(gross)} de ${fmtMoney(WEEK_MIN)}` : "no vendió nada";
+}
+
+function strikeText(n, gross = 0) {
+  return `${n >= STRIKE_MAX ? "🚫" : "⚠️"} **${strikeLabel(n)}** (${strikeReason(gross)})`;
+}
+
+// Semana que se esta revisando en Pagos (domingo del cuadro de fechas).
+function payWeekKey() {
+  return (cloudOn() && byId("dlog-from")?.value) || "";
+}
+
 // Discord, IBAN y "No cobra" de cada empleado: se guardan por nombre completo,
 // en el navegador, porque el programa de escritorio solo guarda nombre,
 // apellido y rango.
@@ -2336,14 +2397,19 @@ function setupContabilidad() {
       return { ...r, name, emp: e, rank: e?.rank || "", pct, total, payout: Math.round(total * pct), noPay: isEmployeeNoPay(name), iban: getEmployeeIban(name) };
     });
     rows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "es"));
+    // Empleado de la semana: quien mas cobra (si hay empate, todos) se lleva el bono.
+    const maxPayout = Math.max(0, ...rows.map((r) => (r.emp && !r.noPay ? r.payout : 0)));
+    for (const r of rows) {
+      r.bonus = maxPayout > 0 && r.emp && !r.noPay && r.payout === maxPayout ? WEEK_BONUS : 0;
+      r.toPay = r.payout + r.bonus;
+    }
     return rows;
   }
 
-  function renderRanking(rows, invSummary, salesSummary, totalAPagar) {
+  function renderRanking(rows, invSummary, salesSummary, totalAPagar, employees = []) {
     const list = byId("pg-ranking");
     const maxTotal = Math.max(1, ...rows.map((r) => r.total));
-    const maxPayout = Math.max(0, ...rows.map((r) => (r.noPay ? 0 : r.payout)));
-    const top = rows.find((r) => maxPayout > 0 && !r.noPay && r.payout === maxPayout);
+    const top = rows.find((r) => r.bonus);
     const paying = rows.filter((r) => r.emp && !r.noPay && r.payout > 0).length;
 
     byId("pg-kpi-fact").textContent = fmtMoney(invSummary.paid_total + salesSummary.total);
@@ -2351,19 +2417,24 @@ function setupContabilidad() {
       ? `${invSummary.paid_count} facturas · ${rows.length} ${rows.length === 1 ? "persona" : "personas"}`
       : "Sin datos";
     byId("pg-kpi-pay").textContent = fmtMoney(totalAPagar);
+    // Importes largos ($ 100.000 o mas): letra mas pequena para que quepan.
+    const payLen = fmtMoney(totalAPagar).length;
+    byId("pg-kpi-pay").dataset.size = payLen > 10 ? "s" : payLen > 7 ? "m" : "";
     byId("pg-kpi-rascas").textContent = String(salesSummary.qty);
     byId("pg-kpi-rascas-sub").textContent = salesSummary.count ? `${salesSummary.count} ventas · ${fmtMoney(salesSummary.total)}` : "-";
     byId("pg-kpi-top").textContent = top ? top.name : "-";
     byId("pg-kpi-top").title = top ? top.name : "";
-    byId("pg-kpi-top-sub").textContent = top ? `${fmtMoney(top.total)} cobrados` : "-";
+    byId("pg-kpi-top-sub").textContent = top ? `${fmtMoney(top.total)} cobrados · bono ${fmtMoney(WEEK_BONUS)}` : "-";
     byId("pg-total-label").textContent = paying ? `TOTAL A PAGAR · ${paying} ${paying === 1 ? "EMPLEADO" : "EMPLEADOS"}` : "TOTAL A PAGAR";
 
     list.textContent = "";
+    lastSnapshot = null;
     if (!rows.length) {
       const p = document.createElement("p");
       p.className = "muted pg-empty";
       p.textContent = "Pega el texto de Discord y pulsa Procesar para ver el ranking.";
       list.appendChild(p);
+      renderClose();
       return;
     }
     const el = (tag, cls, text) => {
@@ -2373,10 +2444,10 @@ function setupContabilidad() {
       return n;
     };
     rows.forEach((r, i) => {
-      const card = el("div", "pg-row" + (r === top ? " first" : ""));
+      const card = el("div", "pg-row" + (r.bonus ? " first" : ""));
       const initials = r.name.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
       const av = el("div", "pg-av" + (r.noPay || !r.emp ? " np" : ""), initials);
-      if (r === top) {
+      if (r.bonus) {
         av.appendChild(el("span", "crown", "★"));
         av.title = "Empleado de la semana";
       }
@@ -2403,11 +2474,136 @@ function setupContabilidad() {
       if (!r.emp) amt.append(el("small", "", "Sin registrar"), el("b", "pg-dash", "$ 0"));
       else if (r.noPay) amt.append(el("small", "", `Le tocarían ${fmtMoney(r.payout)}`), el("b", "pg-dash", "No cobra"));
       else if (!r.pct) amt.append(el("small", "", "Sin rango"), el("b", "pg-dash", "$ 0"));
+      else if (r.bonus) amt.append(el("small", "", `incl. bono ${fmtMoney(r.bonus)} ★`), el("b", "pay", fmtMoney(r.toPay)));
       else amt.append(el("small", "", `de ${fmtMoney(r.total)}`), el("b", "pay", fmtMoney(r.payout)));
       card.append(pos, av, mid, amt);
       list.appendChild(card);
     });
+
+    // Strikes: quien cobra y no llega al minimo (o no vendio nada).
+    const wk = payWeekKey();
+    const grossOf = (e) => rows.find((x) => x.emp === e)?.total || 0;
+    const rankIdx = (e) => {
+      const i = RANKS.findIndex((x) => normalizeKeySimple(x.label) === normalizeKeySimple(e.rank || ""));
+      return i < 0 ? -1 : i;
+    };
+    const idle = employees
+      .filter((e) => !isEmployeeNoPay(fullName(e)) && grossOf(e) < WEEK_MIN)
+      .sort((a, b) => rankIdx(b) - rankIdx(a) || fullName(a).localeCompare(fullName(b), "es"));
+    lastSnapshot = {
+      rows: employees.map((e) => {
+        const name = fullName(e);
+        const r = rows.find((x) => x.emp === e);
+        const noPay = isEmployeeNoPay(name);
+        return {
+          id: e.id ?? null,
+          name,
+          rank: e.rank || "",
+          gross: r ? r.total : 0,
+          payout: r && !noPay ? r.toPay : 0,
+          bonus: r && !noPay ? r.bonus : 0,
+          noPay,
+          strike: !noPay && (r ? r.total : 0) < WEEK_MIN,
+        };
+      }),
+      total: invSummary.paid_total + salesSummary.total,
+      facturas: invSummary.paid_count,
+      rascas: salesSummary.qty,
+    };
+    if (idle.length) {
+      const box = el("div", "pg-warn-box");
+      box.appendChild(el("div", "pg-warn-head", `⚠️ Strikes de esta semana · no llegaron a ${fmtMoney(WEEK_MIN)} (${idle.length})`));
+      const chips = el("div", "pg-warn-list");
+      for (const e of idle) {
+        const n = strikesBefore(e.id, fullName(e), wk) + 1;
+        const max = cloudOn() && n >= STRIKE_MAX;
+        const chip = el("span", "pg-warn-chip" + (max ? " max" : ""));
+        chip.appendChild(el("b", "", fullName(e)));
+        if (e.rank) chip.appendChild(el("span", "pg-badge " + (RANK_BADGE[normalizeKeySimple(e.rank)] || "w-nopay"), e.rank));
+        const g = grossOf(e);
+        chip.appendChild(el("span", "pg-strike-why", g > 0 ? `${fmtMoney(g)} de ${fmtMoney(WEEK_MIN)}` : "Sin ventas"));
+        chip.appendChild(el("span", "pg-strike" + (max ? " max" : ""), max ? `🚫 ${strikeLabel(n)}` : strikeLabel(n)));
+        chips.appendChild(chip);
+      }
+      box.appendChild(chips);
+      list.appendChild(box);
+    }
+    renderClose();
   }
+
+  // ---------- Cierre de semana (guarda la semana para contar strikes) ----------
+  let lastSnapshot = null;
+  const fmtDay = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
+  function renderClose() {
+    const box = byId("pg-close");
+    if (!box) return;
+    box.hidden = !(cloudOn() && isJefe());
+    if (box.hidden) return;
+    const wk = payWeekKey();
+    const to = byId("dlog-to")?.value || "";
+    const done = STRIKE_HIST.find((w) => String(w.semana) === wk);
+    const hasData = !!(lastSnapshot && lastSnapshot.rows.length && lastSnapshot.total > 0);
+    byId("pg-close-week").textContent = wk ? `dom ${fmtDay(wk)} – sáb ${fmtDay(to)}` : "";
+    const btn = byId("pg-close-btn");
+    const reopen = byId("pg-reopen-btn");
+    const info = byId("pg-close-info");
+    reopen.hidden = !done;
+    btn.disabled = !hasData || !wk;
+    btn.textContent = done ? "Volver a guardar" : "Cerrar semana";
+    if (done) {
+      const n = (done.datos?.rows || []).filter((r) => r.strike).length;
+      const when = done.created_at ? new Date(done.created_at).toLocaleString("es-GT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+      info.textContent = `✅ Cerrada${when ? ` el ${when}` : ""}${done.cerrada_por ? ` por ${done.cerrada_por}` : ""} · ${n} ${n === 1 ? "strike guardado" : "strikes guardados"}.`;
+    } else if (!hasData) {
+      info.textContent = "Carga las facturas y los rascas de la semana para poder cerrarla.";
+    } else {
+      info.textContent = "Cuando hayas pagado, ciérrala: así se guardan los strikes para las próximas semanas.";
+    }
+  }
+
+  byId("pg-close-btn")?.addEventListener("click", async () => {
+    const wk = payWeekKey();
+    const to = byId("dlog-to")?.value || "";
+    if (!wk || !lastSnapshot) return;
+    const strikes = lastSnapshot.rows.filter((r) => r.strike).map((r) => `${r.name} (${strikeLabel(strikesBefore(r.id, r.name, wk) + 1)})`);
+    const msg = `¿Cerrar la semana del domingo ${fmtDay(wk)} al sábado ${fmtDay(to)}?\n\n` +
+      (strikes.length ? `Strikes que se guardan:\n• ${strikes.join("\n• ")}` : "Nadie recibe strike esta semana.");
+    if (!confirm(msg)) return;
+    const btn = byId("pg-close-btn");
+    btn.disabled = true;
+    try {
+      await cloud.req("/rest/v1/pagos_semanas?on_conflict=semana", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: { semana: wk, desde: wk, hasta: to || wk, datos: lastSnapshot, cerrada_por: AUTH.name || "", created_at: new Date().toISOString() },
+      });
+      await loadStrikeHist();
+      await refresh();
+    } catch (e) {
+      alert(`No se pudo cerrar la semana: ${e.message}\n\n¿Ejecutaste el SQL 5_semanas_strikes.sql en Supabase?`);
+    } finally {
+      renderClose();
+    }
+  });
+
+  byId("pg-reopen-btn")?.addEventListener("click", async () => {
+    const wk = payWeekKey();
+    if (!wk || !confirm(`¿Reabrir la semana del ${fmtDay(wk)}? Se borran sus strikes guardados.`)) return;
+    try {
+      await cloud.req(`/rest/v1/pagos_semanas?semana=eq.${wk}`, { method: "DELETE" });
+      await loadStrikeHist();
+      await refresh();
+    } catch (e) {
+      alert(`No se pudo reabrir: ${e.message}`);
+    } finally {
+      renderClose();
+    }
+  });
+  for (const id of ["dlog-from", "dlog-to"]) byId(id)?.addEventListener("change", () => refresh());
+  document.addEventListener("badu-auth", async () => {
+    await loadStrikeHist();
+    refresh();
+  });
 
   async function refresh() {
     const inv = Object.values(state.invoices);
@@ -2462,7 +2658,7 @@ function setupContabilidad() {
       employees = [];
     }
     const rows = buildRanking(employees);
-    const totalAPagar = rows.reduce((a, r) => a + (r.emp && !r.noPay ? r.payout : 0), 0);
+    const totalAPagar = rows.reduce((a, r) => a + (r.emp && !r.noPay ? r.toPay : 0), 0);
 
     const totalGeneral = invSummary.total + salesSummary.total;
     refs.totalGeneral.textContent = fmtMoney(totalGeneral);
@@ -2471,7 +2667,7 @@ function setupContabilidad() {
     if (state.ignoredOtherBusiness > 0) footerText += ` | Ignorados (otro comercio): ${state.ignoredOtherBusiness}`;
     refs.footer.textContent = footerText;
     refs.loaded.textContent = invSummary.count || salesSummary.count ? "Datos cargados" : "Sin datos";
-    renderRanking(rows, invSummary, salesSummary, totalAPagar);
+    renderRanking(rows, invSummary, salesSummary, totalAPagar, employees);
   }
 
   function clearState() {
@@ -2922,6 +3118,15 @@ function setupEmployeesModal(state, refreshPagos) {
     });
     // Primero quien cobra (de mas a menos); los que no cobran, al final.
     totalsRows.sort((a, b) => a.noPay - b.noPay || b.payout - a.payout || a.name.localeCompare(b.name, "es"));
+    // Bono del empleado de la semana y strikes (no llegar al minimo).
+    const maxPayout = Math.max(0, ...totalsRows.map((r) => (r.noPay ? 0 : r.payout)));
+    const wk = payWeekKey();
+    for (const r of totalsRows) {
+      r.bonus = maxPayout > 0 && !r.noPay && r.payout === maxPayout ? WEEK_BONUS : 0;
+      r.toPay = r.payout + r.bonus;
+      r.strike = !r.noPay && r.gross < WEEK_MIN;
+      r.strikeN = r.strike ? strikesBefore(r.id, r.name, wk) + 1 : 0;
+    }
   }
 
   function renderTotalsRows() {
@@ -2930,25 +3135,25 @@ function setupEmployeesModal(state, refreshPagos) {
       const tr = document.createElement("tr");
       if (row.id === selectedId) tr.classList.add("is-selected");
       tr.innerHTML = `
-        <td>${escapeHtml(row.name)}</td>
+        <td>${escapeHtml(row.name)}${row.strike ? `<br><small class="warn">${row.strikeN >= STRIKE_MAX && cloudOn() ? "🚫" : "⚠️"} ${escapeHtml(strikeLabel(row.strikeN))} (${escapeHtml(strikeReason(row.gross))})</small>` : ""}</td>
         <td>${escapeHtml(row.rank || "-")}</td>
         <td class="num">${row.pct ? pctText(row.pct) : "-"}</td>
         <td class="num">${fmtMoney(row.paid)}</td>
         <td class="num">${fmtMoney(row.ras)}</td>
-        <td class="num">${row.noPay ? `<span class="muted" title="Le corresponderían ${fmtMoney(row.payout)}">${NO_PAY_TEXT}</span>` : fmtMoney(row.payout)}</td>
+        <td class="num">${row.noPay ? `<span class="muted" title="Le corresponderían ${fmtMoney(row.payout)}">${NO_PAY_TEXT}</span>` : fmtMoney(row.toPay)}${row.bonus ? `<br><small class="muted">incl. bono ${fmtMoney(row.bonus)} ★</small>` : ""}</td>
       `;
       tr.addEventListener("click", () => {
         selectedId = row.id;
         renderTotalsRows();
       });
       tr.addEventListener("dblclick", async () => {
-        const text = row.noPay ? NO_PAY_TEXT : String(row.payout);
+        const text = row.noPay ? NO_PAY_TEXT : String(row.toPay);
         const ok = await copyText(text);
         if (!ok) openCopyFallback(text);
       });
       totalsBody.appendChild(tr);
     }
-    const bankTotal = totalsRows.reduce((acc, r) => acc + (r.noPay ? 0 : r.payout), 0);
+    const bankTotal = totalsRows.reduce((acc, r) => acc + (r.noPay ? 0 : r.toPay), 0);
     byId("employees-bank-total").textContent = `Total a pagar: ${fmtMoney(bankTotal)}`;
   }
 
@@ -2970,9 +3175,10 @@ function setupEmployeesModal(state, refreshPagos) {
 
   // Quien mas cobra (y si cobra) es el empleado de la semana; si hay empate, todos.
   function isEmployeeOfWeek(row) {
-    const maxPayout = Math.max(0, ...totalsRows.map((r) => (r.noPay ? 0 : r.payout)));
-    return maxPayout > 0 && !row.noPay && row.payout === maxPayout;
+    return !!row.bonus;
   }
+
+  const payForCopy = (row) => (row.bonus ? `${fmtMoneyPlain(row.toPay)} (incl. bono ${fmtMoneyPlain(row.bonus)})` : fmtMoneyPlain(row.toPay));
 
   // "Nombre (Rango) <@ID>": si tiene Discord, se le etiqueta.
   function labelForCopy(row) {
@@ -2989,8 +3195,9 @@ function setupEmployeesModal(state, refreshPagos) {
     const pct = row.pct ? pctText(row.pct) : "-";
     let text = row.noPay
       ? `${labelForCopy(row)} | ${pct} | Cobrado: ${fmtMoney(row.gross)} | ${NO_PAY_TEXT}`
-      : `${labelForCopy(row)} | ${pct} | Cobrado: ${fmtMoney(row.gross)} | A pagar: ${fmtMoney(row.payout)} | ${ibanForCopy(row)}`;
+      : `${labelForCopy(row)} | ${pct} | Cobrado: ${fmtMoney(row.gross)} | A pagar: ${fmtMoney(row.toPay)}${row.bonus ? ` (incl. bono ${fmtMoney(row.bonus)})` : ""} | ${ibanForCopy(row)}`;
     if (isEmployeeOfWeek(row)) text += ` | ${EMPLOYEE_OF_WEEK_TAG}`;
+    if (row.strike) text += ` | ${strikeText(row.strikeN, row.gross)}`;
     const ok = await copyText(text);
     if (!ok) openCopyFallback(text);
   });
@@ -3008,8 +3215,9 @@ function setupEmployeesModal(state, refreshPagos) {
       .map((r) => {
         let line = r.noPay
           ? `* ${labelForCopy(r)}: ${NO_PAY_TEXT}`
-          : `* ${labelForCopy(r)}: ${fmtMoneyPlain(r.payout)} · ${ibanForCopy(r)}`;
+          : `* ${labelForCopy(r)}: ${payForCopy(r)} · ${ibanForCopy(r)}`;
         if (isEmployeeOfWeek(r)) line += ` ${EMPLOYEE_OF_WEEK_TAG}`;
+        if (r.strike) line += ` ${strikeText(r.strikeN, r.gross)}`;
         return line;
       })
       .join("\n");
@@ -3144,9 +3352,10 @@ function setupEmployeesAdminModal({ onChanged }) {
     for (const e of shown) {
       const full = fullName(e);
       const pct = pctForRank(e.rank);
+      const sN = cloudOn() ? strikesBefore(e.id, full) : 0;
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${escapeHtml(full)}</td>
+        <td>${escapeHtml(full)}${sN ? ` <span class="pg-strike${sN >= STRIKE_MAX ? " max" : ""}" title="Strikes seguidos: semanas cerradas sin llegar al mínimo de ${fmtMoney(WEEK_MIN)}">${sN >= STRIKE_MAX ? "🚫 " : "⚠️ "}${sN}/${STRIKE_MAX}</span>` : ""}</td>
         <td><select class="text-input emp-rank-select" aria-label="Rango de ${escapeHtml(full)}"></select></td>
         <td class="num emp-pct">${e.rank ? pctText(pct) : "-"}</td>
         <td><input class="text-input emp-discord-input" type="text" inputmode="numeric" placeholder="ID de Discord" aria-label="Discord de ${escapeHtml(full)}" title="ID de Discord: clic derecho sobre la persona → Copiar ID de usuario" /></td>
