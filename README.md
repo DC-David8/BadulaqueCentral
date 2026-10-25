@@ -31,6 +31,20 @@ Los boletos salen **según el monto** (1 boleto cada $ 1.000, cambiable) o **1 p
 
 **2 · Sorteo en vivo.** Se añaden los premios en orden y se sortean uno a uno con una tragaperras de nombres y confeti. Cada boleto es una oportunidad (azar seguro) y, si está marcado, quien gana sale del bombo. Al sortear el primer premio la lista queda **sellada** con una huella SHA-256, así se puede demostrar que no se cambió. El **anuncio para Discord** se escribe solo; también se puede copiar solo el último ganador o exportar a CSV. Todo queda guardado en el navegador.
 
+## Nube: inicio de sesión con Discord y plantilla en línea
+
+Igual que en Aguila Motors, la página puede usar una base de datos en **Supabase**. Mientras `BADU_CLOUD_URL` y `BADU_CLOUD_KEY` estén vacíos (`app.js`), todo funciona como antes, con contraseñas y datos en el navegador. Al rellenarlos:
+
+- **Sin sesión, o con un Discord que no está en la plantilla,** solo se ve el logo y **Iniciar sesión con Discord**.
+- **Los empleados registrados** (de En Pruebas a Encargado) solo ven la **Caja**.
+- **Jefe y Jefe Tribal** ven y editan Pagos, Crafteos, Sorteo, Gestión de Productos y Gestión de empleados, **sin contraseña**.
+- **Solo el Jefe Tribal** da o quita los rangos Jefe y Jefe Tribal, cambia el Discord de un Jefe y marca *No cobra*.
+- **La plantilla** (nombre, rango, Discord, IBAN y No cobra) está en la tabla `employees`, y todos los Jefes ven lo mismo al momento. **☁️ Subir empleados de este navegador a la nube** pasa los que había antes, sin duplicar.
+
+Quién es Jefe lo decide **la base de datos** (funciones `es_jefe` y `es_jefe_tribal`, reglas RLS y el disparador `proteger_rangos`), no la página: aunque alguien toque el código, sin ser Jefe no recibe los datos.
+
+El SQL está en `supabase/1_empleados_y_permisos.sql`. El programa de escritorio sigue con contraseñas, porque el inicio de sesión de Discord necesita la web.
+
 ## Rangos y comisión
 
 Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (facturas pagadas, datáfono incluido, más sus rascas), según su rango:
@@ -179,6 +193,13 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 14 · 25 de octubre de 2026 · Nube (fase 1)
+- Preparada la **nube con Supabase**, como en Aguila Motors: inicio de sesión con Discord, plantilla en línea y permisos por rango decididos por la base de datos (Jefe y Jefe Tribal ven todo; el resto, solo la Caja).
+- SQL de la fase 1 en `supabase/1_empleados_y_permisos.sql` (tablas, funciones de permisos, rangos protegidos y RLS), probado en PostgreSQL.
+- Tarjeta de sesión arriba con la foto de Discord, el nombre y el rango, y botón **Salir**.
+- Gestión de empleados en modo nube: sin contraseña, rangos altos y No cobra solo para el Jefe Tribal, y botón para subir los empleados del navegador.
+- Mientras no se configure la nube, la página funciona igual que antes.
 
 ### Versión 13 · 16 de octubre de 2026 · Sorteo
 - Nueva pestaña **Sorteo**, igual que el Módulo de Sorteo de Aguila Motors, protegida con la contraseña de gerencia.

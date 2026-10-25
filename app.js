@@ -296,6 +296,11 @@ async function waitPyApi(maxMs = 2500) {
 }
 
 async function listEmployees() {
+  if (cloudOn()) {
+    await AUTH_READY;
+    if (!isJefe()) return [];
+    return (await empCloudLoad()).map((e) => ({ id: e.id, name: e.name, surname: e.surname, rank: e.rank }));
+  }
   const api = await waitPyApi();
   if (api && typeof api.emp_list === "function") {
     try {
@@ -313,6 +318,10 @@ async function listEmployees() {
 const BACKEND_LEGACY_PASSWORD = "0000";
 
 async function addEmployee(payload, password) {
+  if (cloudOn()) {
+    await empCloudInsert({ name: payload.name, surname: payload.surname, rank: payload.rank || "" });
+    return true;
+  }
   if (!(await verifyPassword("empleados", password))) {
     throw new Error("Contraseña incorrecta");
   }
@@ -330,6 +339,10 @@ async function addEmployee(payload, password) {
 }
 
 async function deleteEmployee(id, password) {
+  if (cloudOn()) {
+    await empCloudDelete(id);
+    return true;
+  }
   if (!(await verifyPassword("empleados", password))) {
     throw new Error("Contraseña incorrecta");
   }
@@ -350,6 +363,10 @@ async function deleteEmployee(id, password) {
 // funcion para editar, asi que alli se borra y se vuelve a anadir con el
 // rango nuevo (el resto de datos se guarda por nombre, asi que no se pierde).
 async function updateEmployee(id, payload, password) {
+  if (cloudOn()) {
+    await empCloudPatch(id, payload);
+    return true;
+  }
   if (!(await verifyPassword("empleados", password))) {
     throw new Error("Contraseña incorrecta");
   }
@@ -453,12 +470,443 @@ function parseIban(raw) {
   return /^[A-Z]\d{6}$/.test(s) ? s : null;
 }
 
-const getEmployeeDiscord = (n) => loadMap(EMPLOYEE_DISCORD_STORAGE_KEY)[normalizeKeySimple(n)] || "";
-const setEmployeeDiscord = (n, v) => setInMap(EMPLOYEE_DISCORD_STORAGE_KEY, n, v);
-const getEmployeeIban = (n) => loadMap(EMPLOYEE_IBAN_STORAGE_KEY)[normalizeKeySimple(n)] || "";
-const setEmployeeIban = (n, v) => setInMap(EMPLOYEE_IBAN_STORAGE_KEY, n, v);
-const isEmployeeNoPay = (n) => !!loadMap(EMPLOYEE_NOPAY_STORAGE_KEY)[normalizeKeySimple(n)];
-const setEmployeeNoPay = (n, v) => setInMap(EMPLOYEE_NOPAY_STORAGE_KEY, n, v ? 1 : 0);
+// Con la nube activa salen de la tabla "employees"; si no, del navegador.
+const getEmployeeDiscord = (n) => (empCloudOn() ? empCloudFind(n)?.discord || "" : loadMap(EMPLOYEE_DISCORD_STORAGE_KEY)[normalizeKeySimple(n)] || "");
+const getEmployeeIban = (n) => (empCloudOn() ? empCloudFind(n)?.iban || "" : loadMap(EMPLOYEE_IBAN_STORAGE_KEY)[normalizeKeySimple(n)] || "");
+const isEmployeeNoPay = (n) => (empCloudOn() ? !!empCloudFind(n)?.noPay : !!loadMap(EMPLOYEE_NOPAY_STORAGE_KEY)[normalizeKeySimple(n)]);
+function setEmployeeDiscord(n, v, onDone) {
+  if (empCloudOn()) return empCloudSet(n, { discord: v || "" }, onDone);
+  setInMap(EMPLOYEE_DISCORD_STORAGE_KEY, n, v);
+}
+function setEmployeeIban(n, v, onDone) {
+  if (empCloudOn()) return empCloudSet(n, { iban: v || "" }, onDone);
+  setInMap(EMPLOYEE_IBAN_STORAGE_KEY, n, v);
+}
+function setEmployeeNoPay(n, v, onDone) {
+  if (empCloudOn()) return empCloudSet(n, { noPay: !!v }, onDone);
+  setInMap(EMPLOYEE_NOPAY_STORAGE_KEY, n, v ? 1 : 0);
+}
+
+// ============================================================================
+// Nube (Supabase): inicio de sesion con Discord, empleados en linea y
+// permisos por rango. Igual que en Aguila Motors.
+// ----------------------------------------------------------------------------
+// Quien es Jefe lo decide la BASE DE DATOS (funcion es_jefe: rango Jefe o
+// Jefe Tribal con su ID de Discord en la plantilla), no la pagina: aunque
+// alguien toque el codigo, sin ser Jefe no recibe datos.
+// Mientras no haya URL y clave, o en el programa de escritorio, la pagina
+// funciona como antes (con contrasenas y datos en el navegador).
+// La clave "publishable" es publica: sola no deja leer ni escribir nada.
+// ============================================================================
+const BADU_CLOUD_URL = window.BADU_CLOUD_URL || "";
+const BADU_CLOUD_KEY = window.BADU_CLOUD_KEY || "";
+const CLOUD_SESSION_KEY = "badu_cloud_session_v1";
+const HIGH_RANKS = ["Jefe", "Jefe Tribal"];
+
+function cloudOn() {
+  return !!(BADU_CLOUD_URL && BADU_CLOUD_KEY) && /^https?:$/.test(location.protocol);
+}
+
+const cloud = {
+  session: (() => {
+    try {
+      return JSON.parse(localStorage.getItem(CLOUD_SESSION_KEY) || "null");
+    } catch {
+      return null;
+    }
+  })(),
+
+  setSession(j) {
+    this.session = {
+      access_token: j.access_token,
+      refresh_token: j.refresh_token,
+      expires_at: Date.now() + (Number(j.expires_in) || 3600) * 1000,
+    };
+    try {
+      localStorage.setItem(CLOUD_SESSION_KEY, JSON.stringify(this.session));
+    } catch {
+      // sin almacenamiento: la sesion dura hasta cerrar la pagina
+    }
+  },
+
+  clearSession() {
+    this.session = null;
+    try {
+      localStorage.removeItem(CLOUD_SESSION_KEY);
+    } catch {
+      // nada
+    }
+  },
+
+  async req(path, { method = "GET", body, headers = {}, auth = true } = {}) {
+    const h = { apikey: BADU_CLOUD_KEY, ...headers };
+    if (auth) {
+      const tok = await this.token();
+      if (!tok) throw Object.assign(new Error("Tu sesión caducó: vuelve a iniciar sesión."), { status: 401 });
+      h.Authorization = `Bearer ${tok}`;
+    }
+    let payload = body;
+    if (body !== undefined) {
+      h["Content-Type"] = "application/json";
+      payload = JSON.stringify(body);
+    }
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 20000);
+    let r;
+    try {
+      r = await fetch(BADU_CLOUD_URL + path, { method, headers: h, body: payload, signal: ctl.signal });
+    } catch {
+      throw new Error("No hay conexión con la base de datos en línea.");
+    } finally {
+      clearTimeout(timer);
+    }
+    const text = await r.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    if (!r.ok) {
+      const e = new Error((data && (data.message || data.error_description || data.msg || data.error)) || `Error ${r.status}`);
+      e.status = r.status;
+      e.code = data?.code || data?.error_code || "";
+      throw e;
+    }
+    return data;
+  },
+
+  async token() {
+    if (!this.session) return null;
+    if (Date.now() > this.session.expires_at - 60000) {
+      try {
+        const j = await this.req("/auth/v1/token?grant_type=refresh_token", {
+          method: "POST",
+          body: { refresh_token: this.session.refresh_token },
+          auth: false,
+        });
+        this.setSession(j);
+      } catch {
+        this.clearSession();
+        return null;
+      }
+    }
+    return this.session.access_token;
+  },
+
+  loginWithDiscord() {
+    const back = location.origin + location.pathname;
+    location.href = `${BADU_CLOUD_URL}/auth/v1/authorize?provider=discord&redirect_to=${encodeURIComponent(back)}`;
+  },
+
+  async logout() {
+    try {
+      if (this.session) await this.req("/auth/v1/logout", { method: "POST" });
+    } catch {
+      // aunque falle, se cierra en este navegador
+    }
+    this.clearSession();
+  },
+
+  rpc(name) {
+    return this.req(`/rest/v1/rpc/${name}`, { method: "POST", body: {} });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Sesion y permisos
+// ---------------------------------------------------------------------------
+const AUTH = { role: "none", tribal: false, name: "", avatar: "", discordId: "", profile: null, error: "" };
+let resolveAuthReady;
+const AUTH_READY = new Promise((res) => (resolveAuthReady = res));
+
+function isJefe() {
+  return AUTH.role === "jefe";
+}
+
+async function authInit() {
+  // Vuelta desde Discord: la sesion llega en la direccion (#access_token=...).
+  const h = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const q = new URLSearchParams(location.search);
+  const err = h.get("error_description") || q.get("error_description");
+  if (h.get("access_token")) {
+    cloud.setSession({ access_token: h.get("access_token"), refresh_token: h.get("refresh_token"), expires_in: h.get("expires_in") });
+  }
+  if (h.get("access_token") || err) {
+    try {
+      history.replaceState(null, "", location.pathname);
+    } catch {
+      // nada
+    }
+  }
+  if (err) AUTH.error = err.replace(/\+/g, " ");
+  await authRefresh();
+}
+
+async function authRefresh() {
+  Object.assign(AUTH, { role: "none", tribal: false, name: "", avatar: "", discordId: "", profile: null });
+  if (!cloud.session) return;
+  try {
+    const u = await cloud.req("/auth/v1/user");
+    const md = u?.user_metadata || {};
+    AUTH.name = md.custom_claims?.global_name || md.full_name || md.name || "";
+    AUTH.avatar = md.avatar_url || md.picture || "";
+    const ident = (u?.identities || []).find((i) => i.provider === "discord");
+    AUTH.discordId = String(md.provider_id || ident?.identity_data?.sub || "");
+  } catch (e) {
+    if (e.status) {
+      cloud.clearSession();
+      return;
+    }
+    // Sin conexion: con sesion guardada se deja usar la Caja.
+    AUTH.role = "offline";
+    AUTH.error = e.message;
+    return;
+  }
+  try {
+    if ((await cloud.rpc("es_jefe")) === true) {
+      AUTH.role = "jefe";
+      AUTH.tribal = (await cloud.rpc("es_jefe_tribal")) === true;
+    } else {
+      AUTH.role = (await cloud.rpc("es_empleado")) === true ? "empleado" : "invitado";
+    }
+    if (AUTH.role !== "invitado") {
+      const rows = await cloud.rpc("mi_perfil");
+      const r = Array.isArray(rows) ? rows[0] : rows;
+      if (r?.name) AUTH.profile = { name: String(r.name), surname: String(r.surname || ""), rank: String(r.rank || "") };
+    }
+  } catch (e) {
+    AUTH.role = "invitado";
+    AUTH.error =
+      e.status === 404 || e.code === "PGRST202"
+        ? "La base de datos aún no está preparada (falta pegar el SQL en Supabase)."
+        : e.message;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Empleados en linea (tabla "employees"). Solo los Jefes los reciben.
+// ---------------------------------------------------------------------------
+const EMP_CLOUD = { ok: false, list: [] };
+
+function empCloudOn() {
+  return cloudOn() && EMP_CLOUD.ok;
+}
+
+const empFromRow = (r) => ({
+  id: String(r.id),
+  name: String(r.name || "").trim(),
+  surname: String(r.surname || "").trim(),
+  rank: String(r.rank || "").trim(),
+  discord: String(r.discord || ""),
+  iban: String(r.iban || ""),
+  noPay: r.no_pay === true,
+});
+
+async function empCloudLoad() {
+  const rows = await cloud.req("/rest/v1/employees?select=*&order=surname.asc,name.asc&limit=1000");
+  EMP_CLOUD.list = (rows || []).map(empFromRow).filter((e) => e.name && e.surname);
+  EMP_CLOUD.ok = true;
+  return EMP_CLOUD.list;
+}
+
+function empCloudFind(fullNameStr) {
+  const k = normalizeKeySimple(fullNameStr);
+  return EMP_CLOUD.list.find((e) => normalizeKeySimple(fullName(e)) === k);
+}
+
+function empCloudRequireJefe() {
+  if (!isJefe()) throw new Error("Solo los Jefes pueden cambiar la plantilla (inicia sesión con Discord).");
+}
+
+async function empCloudInsert(row) {
+  empCloudRequireJefe();
+  const out = await cloud.req("/rest/v1/employees", {
+    method: "POST",
+    body: [row],
+    headers: { Prefer: "return=representation" },
+  });
+  const e = empFromRow(out[0]);
+  EMP_CLOUD.list.push(e);
+  return e;
+}
+
+async function empCloudPatch(id, patch) {
+  empCloudRequireJefe();
+  const out = await cloud.req(`/rest/v1/employees?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: patch,
+    headers: { Prefer: "return=representation" },
+  });
+  if (!out?.length) throw new Error("No se pudo guardar: no tienes permiso para cambiar a este empleado.");
+  const fresh = empFromRow(out[0]);
+  const idx = EMP_CLOUD.list.findIndex((e) => e.id === fresh.id);
+  if (idx >= 0) EMP_CLOUD.list[idx] = fresh;
+  return fresh;
+}
+
+async function empCloudDelete(id) {
+  empCloudRequireJefe();
+  const out = await cloud.req(`/rest/v1/employees?id=eq.${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=representation" },
+  });
+  if (!out?.length) throw new Error("No se pudo eliminar: no tienes permiso para quitar a este empleado.");
+  EMP_CLOUD.list = EMP_CLOUD.list.filter((e) => e.id !== String(id));
+}
+
+// Discord / IBAN / No cobra desde la tabla (se llaman sin esperar): guarda y avisa si falla.
+function empCloudSet(fullNameStr, patch, onDone) {
+  const e = empCloudFind(fullNameStr);
+  if (!e) return;
+  const prev = { ...e };
+  const row = {};
+  if ("discord" in patch) row.discord = patch.discord;
+  if ("iban" in patch) row.iban = patch.iban;
+  if ("noPay" in patch) row.no_pay = !!patch.noPay;
+  Object.assign(e, patch);
+  empCloudPatch(e.id, row)
+    .then(() => onDone?.(true))
+    .catch((err) => {
+      Object.assign(e, prev);
+      alert(`No se pudo guardar en línea: ${err.message || err}`);
+      onDone?.(false);
+    });
+}
+
+// Pasa a la nube los empleados guardados en este navegador (una sola vez).
+async function empCloudUploadLocal() {
+  empCloudRequireJefe();
+  await empCloudLoad();
+  const local = loadEmployeesLocal();
+  const dMap = loadMap(EMPLOYEE_DISCORD_STORAGE_KEY);
+  const iMap = loadMap(EMPLOYEE_IBAN_STORAGE_KEY);
+  const nMap = loadMap(EMPLOYEE_NOPAY_STORAGE_KEY);
+  let added = 0;
+  const errors = [];
+  for (const e of local) {
+    const key = normalizeKeySimple(fullName(e));
+    if (empCloudFind(fullName(e))) continue;
+    try {
+      await empCloudInsert({
+        name: e.name,
+        surname: e.surname,
+        rank: e.rank || "",
+        discord: dMap[key] || "",
+        iban: iMap[key] || "",
+        no_pay: !!nMap[key],
+      });
+      added++;
+    } catch (err) {
+      errors.push(`${fullName(e)}: ${err.message || err}`);
+    }
+  }
+  return { added, total: local.length, errors };
+}
+
+// ---------------------------------------------------------------------------
+// Pantalla de inicio de sesion, tarjeta de sesion y permisos en la pagina
+// ---------------------------------------------------------------------------
+function renderAuthGate() {
+  const gate = byId("auth-gate");
+  if (!gate) return;
+  const show = cloudOn() && (AUTH.role === "none" || AUTH.role === "invitado");
+  gate.hidden = !show;
+  document.documentElement.classList.remove("auth-pending");
+  // Sin sesion valida no se carga nada de la pagina debajo.
+  document.documentElement.classList.toggle("auth-locked", show);
+  if (!show) return;
+  const msg = byId("auth-gate-msg");
+  const login = byId("auth-gate-login");
+  const out = byId("auth-gate-logout");
+  if (AUTH.role === "invitado") {
+    msg.textContent =
+      AUTH.error ||
+      `${AUTH.name ? AUTH.name + ", tu" : "Tu"} Discord no está en la plantilla del Badulaque. Pide a un Jefe que te añada con tu ID de Discord${AUTH.discordId ? ` (${AUTH.discordId})` : ""}.`;
+    login.hidden = true;
+    out.hidden = false;
+  } else {
+    msg.textContent = AUTH.error || "Inicia sesión con tu cuenta de Discord para entrar.";
+    login.hidden = false;
+    out.hidden = true;
+  }
+}
+
+function renderAuthCard() {
+  const box = byId("auth-user");
+  if (!box) return;
+  const show = cloudOn() && (AUTH.role === "jefe" || AUTH.role === "empleado" || AUTH.role === "offline");
+  box.hidden = !show;
+  if (!show) return;
+  const p = AUTH.profile;
+  const name = p ? `${p.name} ${p.surname}`.trim() : AUTH.name || "Sesión iniciada";
+  const rank = AUTH.role === "offline" ? "Sin conexión" : p?.rank || (isJefe() ? "Jefe" : "Empleado");
+  const img = byId("auth-avatar");
+  if (AUTH.avatar) {
+    img.src = AUTH.avatar;
+    img.hidden = false;
+  } else {
+    img.hidden = true;
+  }
+  byId("auth-name").textContent = name;
+  const rk = byId("auth-rank");
+  rk.textContent = rank;
+  rk.className = "auth-rank " + (RANK_BADGE_CLASS[normalizeKeySimple(rank)] || "w-nopay");
+}
+
+const RANK_BADGE_CLASS = {
+  "en pruebas": "r-pruebas",
+  cajero: "r-cajero",
+  "cajero experimentado": "r-exp",
+  encargado: "r-encargado",
+  jefe: "r-jefe",
+  "jefe tribal": "r-tribal",
+};
+
+function applyRoleUi() {
+  const root = document.body;
+  const on = cloudOn();
+  root.classList.toggle("cloud-mode", on);
+  root.classList.toggle("role-jefe", on && isJefe());
+  root.classList.toggle("role-tribal", on && AUTH.tribal);
+  // Sin ser Jefe solo se ve la Caja.
+  if (on && !isJefe()) {
+    const active = document.querySelector(".tab.is-active");
+    if (active && active.dataset.tabTarget !== "tab-caja") document.querySelector('.tab[data-tab-target="tab-caja"]')?.click();
+  }
+  renderAuthGate();
+  renderAuthCard();
+}
+
+async function cloudStart() {
+  if (!cloudOn()) {
+    resolveAuthReady();
+    return;
+  }
+  document.documentElement.classList.add("auth-pending");
+  byId("auth-gate-login")?.addEventListener("click", () => cloud.loginWithDiscord());
+  const doLogout = async () => {
+    await cloud.logout();
+    location.reload();
+  };
+  byId("auth-gate-logout")?.addEventListener("click", doLogout);
+  byId("auth-logout")?.addEventListener("click", doLogout);
+  try {
+    await authInit();
+    if (isJefe()) {
+      try {
+        await empCloudLoad();
+      } catch {
+        EMP_CLOUD.ok = false;
+      }
+    }
+  } finally {
+    applyRoleUi();
+    resolveAuthReady();
+    document.dispatchEvent(new Event("badu-auth"));
+  }
+}
+
 
 function normalizeKeySimple(s) {
   return s
@@ -816,7 +1264,10 @@ function setupTabs() {
     tab.addEventListener("click", async () => {
       const target = tab.dataset.tabTarget;
       const zone = TAB_PASSWORD_ZONES[target];
-      if (zone && !unlocked.has(target)) {
+      if (zone && cloudOn()) {
+        // Con la nube manda la sesion: solo los Jefes entran, sin contrasena.
+        if (!isJefe()) return;
+      } else if (zone && !unlocked.has(target)) {
         const ok = await showAccessModal({
           sectionLabel: tab.textContent?.trim() || "Acceso restringido",
           zone,
@@ -1202,7 +1653,7 @@ function setupProductsAdminModal(onProductsChanged) {
   });
 
   openBtn.addEventListener("click", async () => {
-    const ok = await showAccessModal({ sectionLabel: "Gestión de Productos", zone: "productos" });
+    const ok = cloudOn() ? isJefe() : await showAccessModal({ sectionLabel: "Gestión de Productos", zone: "productos" });
     if (!ok) return;
     productAdminUnlocked = true;
     resetForm();
@@ -2275,8 +2726,14 @@ function setupEmployeesAdminModal({ onChanged }) {
       const opt = document.createElement("option");
       opt.value = r.label;
       opt.textContent = `${r.label} (${pctText(r.pct)})`;
+      // Con la nube, solo el Jefe Tribal da los rangos Jefe y Jefe Tribal.
+      if (cloudOn() && !AUTH.tribal && HIGH_RANKS.includes(r.label) && r.label !== current) {
+        opt.disabled = true;
+        opt.textContent += " · solo Jefe Tribal";
+      }
       select.appendChild(opt);
     }
+    if (cloudOn() && !AUTH.tribal && HIGH_RANKS.includes(current)) select.disabled = true;
     if (current && !pctForRank(current)) {
       const opt = document.createElement("option");
       opt.value = current;
@@ -2297,6 +2754,11 @@ function setupEmployeesAdminModal({ onChanged }) {
   }
 
   const needUnlock = () => {
+    if (cloudOn()) {
+      if (isJefe()) return false;
+      alert("Solo los Jefes pueden cambiar la plantilla.");
+      return true;
+    }
     if (unlocked) return false;
     alert("Primero desbloquea con la contraseña.");
     return true;
@@ -2358,7 +2820,7 @@ function setupEmployeesAdminModal({ onChanged }) {
           dInput.value = getEmployeeDiscord(full);
           return;
         }
-        setEmployeeDiscord(full, id);
+        setEmployeeDiscord(full, id, (ok) => !ok && renderList());
         dInput.value = id;
         await (onChanged?.());
       });
@@ -2376,19 +2838,23 @@ function setupEmployeesAdminModal({ onChanged }) {
           iInput.value = getEmployeeIban(full);
           return;
         }
-        setEmployeeIban(full, iban);
+        setEmployeeIban(full, iban, (ok) => !ok && renderList());
         iInput.value = iban;
         await (onChanged?.());
       });
 
       const npInput = tr.querySelector(".emp-nopay-input");
       npInput.checked = isEmployeeNoPay(full);
+      if (cloudOn() && !AUTH.tribal) {
+        npInput.disabled = true;
+        npInput.title = "Solo el Jefe Tribal cambia No cobra";
+      }
       npInput.addEventListener("change", async () => {
         if (needUnlock()) {
           npInput.checked = isEmployeeNoPay(full);
           return;
         }
-        setEmployeeNoPay(full, npInput.checked);
+        setEmployeeNoPay(full, npInput.checked, (ok) => !ok && renderList());
         await (onChanged?.());
       });
 
@@ -2492,6 +2958,42 @@ function setupEmployeesAdminModal({ onChanged }) {
   byId("emp-refresh").addEventListener("click", refresh);
   searchInput.addEventListener("input", renderList);
 
+  // Con la nube: sin contrasena (manda la sesion de Discord) y boton para
+  // subir los empleados guardados en este navegador.
+  const accessBlock = passInput.closest(".admin-block");
+  const uploadBtn = byId("emp-cloud-upload");
+  function syncCloudUi() {
+    const on = cloudOn();
+    if (accessBlock) accessBlock.hidden = on;
+    const note = byId("emp-cloud-note");
+    if (note) {
+      note.hidden = !on;
+      note.textContent = on
+        ? `☁️ Plantilla en línea · sesión de ${AUTH.tribal ? "Jefe Tribal" : "Jefe"}. ${AUTH.tribal ? "" : "Los rangos Jefe y Jefe Tribal y la casilla No cobra solo los cambia el Jefe Tribal. "}El Discord de cada uno es con el que inicia sesión.`
+        : "";
+    }
+    if (uploadBtn) uploadBtn.hidden = !(on && isJefe() && loadEmployeesLocal().length);
+  }
+  document.addEventListener("badu-auth", () => {
+    syncCloudUi();
+    refresh();
+  });
+  uploadBtn?.addEventListener("click", async () => {
+    if (!confirm("¿Subir a la nube los empleados guardados en este navegador? Los que ya estén en línea (mismo nombre) no se duplican.")) return;
+    uploadBtn.disabled = true;
+    try {
+      const r = await empCloudUploadLocal();
+      alert(`Subidos ${r.added} de ${r.total} empleados.${r.errors.length ? "\n\nNo se pudieron subir:\n" + r.errors.join("\n") : ""}`);
+      await refresh();
+      await (onChanged?.());
+    } catch (err) {
+      alert(String(err?.message || err));
+    } finally {
+      uploadBtn.disabled = false;
+    }
+  });
+  syncCloudUi();
+
   // Al cerrar la ventana se vuelve a bloquear.
   modal.addEventListener("close", () => {
     unlocked = false;
@@ -2500,7 +3002,10 @@ function setupEmployeesAdminModal({ onChanged }) {
     setStatus("Bloqueado");
   });
 
-  modal.addEventListener("badu-open", refresh);
+  modal.addEventListener("badu-open", () => {
+    syncCloudUi();
+    refresh();
+  });
 
   refresh();
 }
@@ -3203,6 +3708,7 @@ function setupSorteo() {
   else window.addEventListener("load", hide, { once: true });
 })();
 
+cloudStart();
 setupCopyFallbackModal();
 setupTabs();
 setupLayout();
