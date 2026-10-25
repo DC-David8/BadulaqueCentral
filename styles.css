@@ -540,6 +540,18 @@ small.warn { color: var(--warn); }
 .pg-close-txt { display: grid; gap: 3px; font-size: 13px; }
 .pg-close-btns { display: flex; gap: 8px; }
 
+/* --- Despidos ------------------------------------------------------------ */
+.w-fired { background: #ff6b6b14; color: #ff9b9b; border: 1px solid #ff6b6b66; }
+.emp-fired { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--key); }
+.emp-fired > summary { cursor: pointer; padding: 10px 14px; font: 600 12px var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.emp-fired[open] > summary { border-bottom: 1px solid var(--line); }
+.emp-fired .table-wrap { margin: 0; border: 0; }
+.fire-card { width: min(440px, calc(100vw - 32px)); }
+.fire-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 4px 0 12px; font-size: 15px; }
+.fire-strikes { font: 600 12px var(--f-mono); color: var(--warn); }
+.fire-label { display: block; margin: 10px 0 4px; font: 600 12px var(--f-mono); color: var(--muted); }
+.fire-card select, .fire-card input { width: 100%; }
+
 /* --- Copiador de Rasca y Gana ------------------------------------------- */
 .rascas-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; color: #c3cad3; }
 .rascas-link { display: inline-block; padding: 6px 10px; border-radius: 8px; background: #5865f2; color: #fff; font-weight: 600; font-size: 12.5px; text-decoration: none; }

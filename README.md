@@ -83,6 +83,15 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 - Los ascensos no son automáticos: los das tú en «Gestión de empleados».
 - Las cifras están en `WEEK_MIN`, `WEEK_BONUS` y `STRIKE_MAX` al principio de `app.js`.
 
+## Despidos
+
+- En «Gestión de empleados» el botón **Despedir** sustituye a Eliminar: pide el motivo (3 strikes, inactividad / abandono, mal comportamiento, renuncia u otro, más un detalle opcional). Si lleva 3 strikes, el motivo ya viene puesto.
+- El despedido sale de la plantilla y de los pagos, pero queda en el registro **Despedidos** (abajo del todo en «Gestión de empleados»), con la fecha, el motivo y quién lo despidió. Desde ahí se puede **Readmitir** con su rango, Discord e IBAN.
+- Si añades a alguien con el mismo nombre que un despedido, la página propone readmitirlo.
+- Si un despedido tiene ventas en la semana, sale en el ranking como «Despedido» con $ 0 y sin strike.
+- Con la nube: pierde el acceso a la página aunque inicie sesión con su Discord. Solo el Jefe Tribal despide o readmite a un Jefe, y nadie puede despedirse a sí mismo. SQL: `supabase/6_despidos.sql`.
+- Sin la nube (programa de escritorio) el registro se guarda en ese equipo.
+
 ## Rangos y comisión
 
 Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (facturas pagadas, datáfono incluido, más sus rascas), según su rango:
@@ -231,6 +240,11 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 22 · 25 de octubre de 2026 · Despidos
+- «Despedir» con motivo en lugar de «Eliminar», registro de Despedidos y Readmitir.
+- El despedido pierde el acceso con la nube; solo el Jefe Tribal despide a un Jefe.
+- El cierre de semana y los despidos guardan el nombre del personaje de quien lo hace.
 
 ### Versión 21 · 25 de octubre de 2026 · Strikes y bono
 - Mínimo semanal de $ 20.000: strikes en Pagos, Totales empleados, Gestión de empleados y el texto de Discord; con 3 seguidos, despido.

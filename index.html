@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=21" />
+  <link rel="stylesheet" href="styles.css?v=22" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -460,7 +460,7 @@
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
-    <footer class="app-version">Versión 21 · Strikes y bono</footer>
+    <footer class="app-version">Versión 22 · Despidos</footer>
   </main>
   </div>
 
@@ -632,6 +632,49 @@
           <tbody id="emp-admin-body"></tbody>
         </table>
       </div>
+
+      <details class="emp-fired" id="emp-fired-box">
+        <summary>Despedidos (<span id="emp-fired-count">0</span>) · registro</summary>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Empleado</th>
+                <th>Rango</th>
+                <th>Fecha</th>
+                <th>Motivo</th>
+                <th class="num">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="emp-fired-body"></tbody>
+          </table>
+        </div>
+      </details>
+    </form>
+  </dialog>
+
+  <dialog id="fire-dlg">
+    <form method="dialog" class="modal-card fire-card">
+      <header class="modal-head">
+        <h3>Despedir</h3>
+      </header>
+      <p class="fire-who"><b id="fire-name"></b> <span class="muted" id="fire-rank"></span> <span class="fire-strikes" id="fire-strikes"></span></p>
+      <label class="fire-label" for="fire-reason">Motivo</label>
+      <select id="fire-reason" class="text-input">
+        <option value="3 strikes (no llegó al mínimo)">3 strikes (no llegó al mínimo)</option>
+        <option value="Inactividad / abandono">Inactividad / abandono</option>
+        <option value="Mal comportamiento">Mal comportamiento</option>
+        <option value="Renuncia">Renuncia</option>
+        <option value="Otro">Otro</option>
+        <option value="" selected>Elige un motivo…</option>
+      </select>
+      <label class="fire-label" for="fire-detail">Detalle (opcional)</label>
+      <input id="fire-detail" class="text-input" type="text" maxlength="140" placeholder="Ej.: no se presentó en dos semanas" />
+      <p class="muted">Sale de la plantilla y de los pagos, pero queda en el registro de <b>Despedidos</b>. Se puede readmitir.</p>
+      <footer class="actions">
+        <button value="cancel" class="ghost">Cancelar</button>
+        <button value="ok" class="danger" id="fire-ok" disabled>Despedir</button>
+      </footer>
     </form>
   </dialog>
 
@@ -708,6 +751,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=21"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>

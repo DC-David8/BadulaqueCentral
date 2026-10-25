@@ -299,7 +299,7 @@ async function listEmployees() {
   if (cloudOn()) {
     await AUTH_READY;
     if (!isJefe()) return [];
-    return (await empCloudLoad()).map((e) => ({ id: e.id, name: e.name, surname: e.surname, rank: e.rank }));
+    return (await empCloudLoad()).filter((e) => !e.firedAt).map((e) => ({ id: e.id, name: e.name, surname: e.surname, rank: e.rank }));
   }
   const api = await waitPyApi();
   if (api && typeof api.emp_list === "function") {
@@ -356,6 +356,81 @@ async function deleteEmployee(id, password) {
   const current = loadEmployeesLocal();
   const next = current.filter((e) => String(e.id) !== String(id));
   saveEmployeesLocal(next);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Despidos: en vez de borrar al empleado se le marca como despedido (fecha,
+// motivo y quien lo hizo) y queda en el registro de "Despedidos".
+// Con la nube son columnas de la tabla employees; sin ella (programa de
+// escritorio) el registro se guarda en este equipo y el empleado sale de la
+// lista del programa.
+// ---------------------------------------------------------------------------
+// Quien hace un cambio: el nombre del personaje (o el de Discord si no hay perfil).
+function authWho() {
+  return (AUTH.profile && fullName(AUTH.profile)) || AUTH.name || "";
+}
+
+const EMPLOYEE_FIRED_STORAGE_KEY = "badu_employees_fired_v1";
+
+function loadFiredLocal() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(EMPLOYEE_FIRED_STORAGE_KEY) || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFiredLocal(list) {
+  try {
+    localStorage.setItem(EMPLOYEE_FIRED_STORAGE_KEY, JSON.stringify(list));
+  } catch {
+    // sin almacenamiento
+  }
+}
+
+// Despedidos, el mas reciente primero: { id, name, surname, rank, firedAt, firedBy, firedReason }.
+function listFired() {
+  const list = cloudOn() ? EMP_CLOUD.list.filter((e) => e.firedAt) : loadFiredLocal();
+  return [...list].sort((a, b) => String(b.firedAt).localeCompare(String(a.firedAt)));
+}
+
+function findFired(fullNameStr) {
+  const k = normalizeKeySimple(fullNameStr);
+  return listFired().find((e) => normalizeKeySimple(fullName(e)) === k) || null;
+}
+
+async function fireEmployee(e, reason, password) {
+  const full = fullName(e);
+  if (cloudOn()) {
+    await empCloudPatch(e.id, { despedido_at: new Date().toISOString(), despedido_por: authWho(), despedido_motivo: reason });
+    return true;
+  }
+  const discord = getEmployeeDiscord(full);
+  const iban = getEmployeeIban(full);
+  await deleteEmployee(e.id, password); // comprueba la contrasena
+  const rec = {
+    id: safeRandomId(), name: e.name, surname: e.surname, rank: e.rank || "",
+    discord, iban, firedAt: new Date().toISOString(), firedBy: "Gerencia", firedReason: reason,
+  };
+  saveFiredLocal([rec, ...loadFiredLocal().filter((x) => normalizeKeySimple(fullName(x)) !== normalizeKeySimple(full))]);
+  setEmployeeDiscord(full, "");
+  setEmployeeIban(full, "");
+  setEmployeeNoPay(full, false);
+  return true;
+}
+
+async function readmitEmployee(rec, password) {
+  if (cloudOn()) {
+    await empCloudPatch(rec.id, { despedido_at: null, despedido_por: null, despedido_motivo: null });
+    return true;
+  }
+  await addEmployee({ name: rec.name, surname: rec.surname, rank: rec.rank || "" }, password);
+  const full = fullName(rec);
+  if (rec.discord) setEmployeeDiscord(full, rec.discord);
+  if (rec.iban) setEmployeeIban(full, rec.iban);
+  saveFiredLocal(loadFiredLocal().filter((x) => x.id !== rec.id));
   return true;
 }
 
@@ -762,6 +837,9 @@ const empFromRow = (r) => ({
   discord: String(r.discord || ""),
   iban: String(r.iban || ""),
   noPay: r.no_pay === true,
+  firedAt: r.despedido_at || "",
+  firedBy: String(r.despedido_por || ""),
+  firedReason: String(r.despedido_motivo || ""),
 });
 
 async function empCloudLoad() {
@@ -771,9 +849,11 @@ async function empCloudLoad() {
   return EMP_CLOUD.list;
 }
 
+// Primero entre los que siguen en plantilla; si no, entre los despedidos.
 function empCloudFind(fullNameStr) {
   const k = normalizeKeySimple(fullNameStr);
-  return EMP_CLOUD.list.find((e) => normalizeKeySimple(fullName(e)) === k);
+  const same = (e) => normalizeKeySimple(fullName(e)) === k;
+  return EMP_CLOUD.list.find((e) => !e.firedAt && same(e)) || EMP_CLOUD.list.find(same);
 }
 
 function empCloudRequireJefe() {
@@ -2391,10 +2471,11 @@ function setupContabilidad() {
     const empByKey = new Map(employees.map((e) => [normalizeKeySimple(fullName(e)), e]));
     const rows = [...byKey.entries()].map(([key, r]) => {
       const e = empByKey.get(key);
-      const name = e ? fullName(e) : r.name;
+      const fired = e ? null : findFired(r.name);
+      const name = e ? fullName(e) : fired ? fullName(fired) : r.name;
       const total = r.fact + r.ras;
       const pct = e ? pctForRank(e.rank) : 0;
-      return { ...r, name, emp: e, rank: e?.rank || "", pct, total, payout: Math.round(total * pct), noPay: isEmployeeNoPay(name), iban: getEmployeeIban(name) };
+      return { ...r, name, emp: e, fired, rank: e?.rank || "", pct, total, payout: Math.round(total * pct), noPay: e ? isEmployeeNoPay(name) : false, iban: e ? getEmployeeIban(name) : "" };
     });
     rows.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "es"));
     // Empleado de la semana: quien mas cobra (si hay empate, todos) se lleva el bono.
@@ -2456,7 +2537,8 @@ function setupContabilidad() {
       const mid = el("div", "pg-mid");
       const nameRow = el("div", "pg-name");
       nameRow.appendChild(el("span", "", r.name));
-      if (!r.emp) nameRow.appendChild(el("span", "pg-badge w-nopay", "Sin registrar"));
+      if (!r.emp && r.fired) nameRow.appendChild(el("span", "pg-badge w-fired", "Despedido"));
+      else if (!r.emp) nameRow.appendChild(el("span", "pg-badge w-nopay", "Sin registrar"));
       else if (r.rank) nameRow.appendChild(el("span", "pg-badge " + (RANK_BADGE[normalizeKeySimple(r.rank)] || "w-nopay"), `${r.rank} · ${pctText(r.pct)}`));
       else nameRow.appendChild(el("span", "pg-badge w-iban", "Sin rango"));
       if (r.emp && r.noPay) nameRow.appendChild(el("span", "pg-badge w-nopay", "No cobra"));
@@ -2471,7 +2553,7 @@ function setupContabilidad() {
       mid.append(nameRow, bar, el("div", "pg-meta", meta.join(" · ")));
 
       const amt = el("div", "pg-amt");
-      if (!r.emp) amt.append(el("small", "", "Sin registrar"), el("b", "pg-dash", "$ 0"));
+      if (!r.emp) amt.append(el("small", "", r.fired ? "Despedido" : "Sin registrar"), el("b", "pg-dash", "$ 0"));
       else if (r.noPay) amt.append(el("small", "", `Le tocarían ${fmtMoney(r.payout)}`), el("b", "pg-dash", "No cobra"));
       else if (!r.pct) amt.append(el("small", "", "Sin rango"), el("b", "pg-dash", "$ 0"));
       else if (r.bonus) amt.append(el("small", "", `incl. bono ${fmtMoney(r.bonus)} ★`), el("b", "pay", fmtMoney(r.toPay)));
@@ -2575,7 +2657,7 @@ function setupContabilidad() {
       await cloud.req("/rest/v1/pagos_semanas?on_conflict=semana", {
         method: "POST",
         headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: { semana: wk, desde: wk, hasta: to || wk, datos: lastSnapshot, cerrada_por: AUTH.name || "", created_at: new Date().toISOString() },
+        body: { semana: wk, desde: wk, hasta: to || wk, datos: lastSnapshot, cerrada_por: authWho(), created_at: new Date().toISOString() },
       });
       await loadStrikeHist();
       await refresh();
@@ -3361,7 +3443,7 @@ function setupEmployeesAdminModal({ onChanged }) {
         <td><input class="text-input emp-discord-input" type="text" inputmode="numeric" placeholder="ID de Discord" aria-label="Discord de ${escapeHtml(full)}" title="ID de Discord: clic derecho sobre la persona → Copiar ID de usuario" /></td>
         <td><input class="text-input emp-iban-input" type="text" placeholder="J000000" maxlength="9" aria-label="IBAN de ${escapeHtml(full)}" title="IBAN del banco del servidor (una letra y 6 números)" /></td>
         <td class="center"><input class="emp-nopay-input" type="checkbox" aria-label="${escapeHtml(full)} no cobra" title="No cobra la nómina: no se le pide IBAN y no suma al Total a Pagar" /></td>
-        <td class="num"><button type="button" class="danger small" data-del="1">Eliminar</button></td>
+        <td class="num"><button type="button" class="danger small" data-del="1">Despedir</button></td>
       `;
       body.appendChild(tr);
 
@@ -3435,18 +3517,103 @@ function setupEmployeesAdminModal({ onChanged }) {
 
       tr.querySelector("button[data-del]").addEventListener("click", async () => {
         if (needUnlock()) return;
-        if (!confirm(`Eliminar a ${full}?`)) return;
+        if (cloudOn() && !AUTH.tribal && HIGH_RANKS.includes(e.rank)) {
+          alert("Solo el Jefe Tribal puede despedir a un Jefe.");
+          return;
+        }
+        if (cloudOn() && AUTH.discordId && getEmployeeDiscord(full) === AUTH.discordId) {
+          alert("No puedes despedirte a ti mismo: perderías el acceso a la página.");
+          return;
+        }
+        const reason = await askFireReason(e);
+        if (!reason) return;
         try {
-          await deleteEmployee(e.id, adminPass);
-          setEmployeeDiscord(full, "");
-          setEmployeeIban(full, "");
-          setEmployeeNoPay(full, false);
+          await fireEmployee(e, reason, adminPass);
           await refresh();
           await (onChanged?.());
         } catch (err) {
           alert(String(err?.message || err || "Error"));
         }
       });
+    }
+  }
+
+  // ---------- Ventana "Despedir" (motivo) ----------
+  const fireDlg = byId("fire-dlg");
+  function askFireReason(e) {
+    return new Promise((resolve) => {
+      const full = fullName(e);
+      const strikes = cloudOn() ? strikesBefore(e.id, full) : 0;
+      byId("fire-name").textContent = full;
+      byId("fire-rank").textContent = e.rank || "Sin rango";
+      byId("fire-strikes").textContent = strikes ? `${strikes >= STRIKE_MAX ? "🚫" : "⚠️"} ${strikes}/${STRIKE_MAX} strikes seguidos` : "";
+      const sel = byId("fire-reason");
+      sel.value = strikes >= STRIKE_MAX ? sel.options[0].value : "";
+      byId("fire-detail").value = "";
+      byId("fire-ok").disabled = !sel.value;
+      const done = (val) => {
+        fireDlg.removeEventListener("close", onClose);
+        resolve(val);
+      };
+      const onClose = () => {
+        if (fireDlg.returnValue !== "ok") return done("");
+        const d = byId("fire-detail").value.trim();
+        done(d ? `${sel.value} · ${d}` : sel.value);
+      };
+      fireDlg.addEventListener("close", onClose);
+      fireDlg.returnValue = "";
+      fireDlg.showModal();
+    });
+  }
+  byId("fire-reason")?.addEventListener("change", () => {
+    byId("fire-ok").disabled = !byId("fire-reason").value;
+  });
+
+  // ---------- Registro de despidos ----------
+  const fmtFiredAt = (iso) => {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "-" : d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
+  };
+  function renderFired() {
+    const box = byId("emp-fired-box");
+    const fbody = byId("emp-fired-body");
+    if (!box || !fbody) return;
+    const list = listFired();
+    byId("emp-fired-count").textContent = String(list.length);
+    fbody.innerHTML = "";
+    if (!list.length) {
+      fbody.innerHTML = '<tr><td colspan="5" class="muted">Nadie ha sido despedido todavía.</td></tr>';
+      return;
+    }
+    for (const f of list) {
+      const full = fullName(f);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(full)}</td>
+        <td>${escapeHtml(f.rank || "-")}</td>
+        <td>${fmtFiredAt(f.firedAt)}</td>
+        <td>${escapeHtml(f.firedReason || "-")}${f.firedBy ? `<br><small class="muted">por ${escapeHtml(f.firedBy)}</small>` : ""}</td>
+        <td class="num"><button type="button" class="ghost small" data-readmit="1">Readmitir</button></td>`;
+      tr.querySelector("button[data-readmit]").addEventListener("click", () => readmit(f));
+      fbody.appendChild(tr);
+    }
+  }
+
+  async function readmit(f) {
+    if (needUnlock()) return;
+    const full = fullName(f);
+    if (employees.some((e) => normalizeKeySimple(fullName(e)) === normalizeKeySimple(full))) {
+      alert(`${full} ya está en la plantilla.`);
+      return;
+    }
+    if (!confirm(`¿Readmitir a ${full}${f.rank ? ` como ${f.rank}` : ""}? Sale de Despedidos y vuelve a la plantilla.`)) return;
+    try {
+      await readmitEmployee(f, adminPass);
+      await refresh();
+      await (onChanged?.());
+    } catch (err) {
+      alert(String(err?.message || err || "Error"));
     }
   }
 
@@ -3457,6 +3624,7 @@ function setupEmployeesAdminModal({ onChanged }) {
         `${a.surname} ${a.name}`.localeCompare(`${b.surname} ${b.name}`, "es", { sensitivity: "base" })
       );
       renderList();
+      renderFired();
     } catch {
       alert("No se pudieron cargar los empleados.");
     }
@@ -3510,6 +3678,13 @@ function setupEmployeesAdminModal({ onChanged }) {
       return;
     }
     if (needUnlock()) return;
+    const prevFired = findFired(`${name} ${surname}`);
+    if (prevFired) {
+      if (confirm(`${fullName(prevFired)} está en Despedidos (${fmtFiredAt(prevFired.firedAt)} · ${prevFired.firedReason || "sin motivo"}).\n\n¿Readmitirlo en vez de añadirlo de nuevo?`)) {
+        await readmit(prevFired);
+      }
+      return;
+    }
     addBtn.disabled = true; // evita guardar dos veces mientras se guarda
     try {
       await addEmployee({ name, surname, rank }, adminPass);
