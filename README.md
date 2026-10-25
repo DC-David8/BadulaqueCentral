@@ -194,6 +194,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 15 · 25 de octubre de 2026 · Nube activa
+- La nube queda **activa** con el proyecto de Supabase del Badulaque: para entrar hay que iniciar sesión con Discord. Los Jefes ven todo; el resto de la plantilla, la Caja.
+
 ### Versión 14 · 25 de octubre de 2026 · Nube (fase 1)
 - Preparada la **nube con Supabase**, como en Aguila Motors: inicio de sesión con Discord, plantilla en línea y permisos por rango decididos por la base de datos (Jefe y Jefe Tribal ven todo; el resto, solo la Caja).
 - SQL de la fase 1 en `supabase/1_empleados_y_permisos.sql` (tablas, funciones de permisos, rangos protegidos y RLS), probado en PostgreSQL.
