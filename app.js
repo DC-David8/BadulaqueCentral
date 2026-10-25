@@ -498,8 +498,8 @@ function setEmployeeNoPay(n, v, onDone) {
 // funciona como antes (con contrasenas y datos en el navegador).
 // La clave "publishable" es publica: sola no deja leer ni escribir nada.
 // ============================================================================
-const BADU_CLOUD_URL = window.BADU_CLOUD_URL || "";
-const BADU_CLOUD_KEY = window.BADU_CLOUD_KEY || "";
+const BADU_CLOUD_URL = window.BADU_CLOUD_URL || "https://aewhpzwksxaqsuwsekcd.supabase.co";
+const BADU_CLOUD_KEY = window.BADU_CLOUD_KEY || "sb_publishable_sWiHTAwMYnw1hmTaCbLl5Q_4jMPZ0AB";
 const CLOUD_SESSION_KEY = "badu_cloud_session_v1";
 const HIGH_RANKS = ["Jefe", "Jefe Tribal"];
 
