@@ -71,7 +71,7 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 - En Pagos, **Pegar + Procesar** lo añade debajo de las facturas que trajo el bot.
 - Solo lee lo que ya se ve en pantalla: no usa la cuenta, ni la API de Discord, ni manda nada a ningún sitio.
 - El lector junta las etiquetas sueltas («Vendedor:» con el nombre en la línea de abajo, tal como sale al copiar los recuadros de Discord) y acepta totales con «€».
-- Enlace directo al canal: `RASCAS_CHANNEL_URL` en `app.js` (vacío = el botón no sale).
+- Botón **Abrir canal de Rasca y Gana ↗** junto al copiador (enlace en `RASCAS_CHANNEL_URL` de `app.js`).
 
 ## Rangos y comisión
 
@@ -221,6 +221,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 20 · 25 de octubre de 2026 · Enlace al canal de rascas
+- Pagos: botón para abrir directamente el canal de Rasca y Gana del Discord de la ciudad.
 
 ### Versión 19 · 25 de octubre de 2026 · Copiador de rascas
 - Pagos: botón **🍎 Copiador de rascas** con el marcador para el canal de Rasca y Gana del Discord de la ciudad y sus instrucciones.

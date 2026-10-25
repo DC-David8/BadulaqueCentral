@@ -2560,7 +2560,7 @@ function setupContabilidad() {
 // copia. Igual que el copiador de kits de Aguila Motors.
 // Enlace directo al canal del log de Rasca y Gana en el Discord de la ciudad
 // (clic derecho en el canal → Copiar enlace). Vacio = no se muestra el boton.
-const RASCAS_CHANNEL_URL = "";
+const RASCAS_CHANNEL_URL = "https://discord.com/channels/943830234128597003/1424138655114592470";
 
 function baduRascasCopier() {
   if (window.__baduRascas) { window.__baduRascas.show(); return; }
