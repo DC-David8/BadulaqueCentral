@@ -73,21 +73,36 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 - El lector junta las etiquetas sueltas («Vendedor:» con el nombre en la línea de abajo, tal como sale al copiar los recuadros de Discord) y acepta totales con «€».
 - Botón **Abrir canal de Rasca y Gana ↗** junto al copiador (enlace en `RASCAS_CHANNEL_URL` de `app.js`).
 
+## Gestión de empleados (👥 Empleados)
+
+Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado · Strikes · Rangos · Despedidos**.
+
+- **Listado:** recuadros arriba que también filtran (En plantilla, Con strikes, Para despido 3/3, Sin IBAN, Sin Discord), buscador y orden Por rango / A–Z / Más strikes. Cada fila: avatar del rango, nombre, rango y %, strikes y ✔/⚠ de Discord e IBAN (o «No cobra»). Al tocar una fila se abre su ficha.
+- **Ficha:** «← Listado» y anterior / siguiente; cabecera con avatar grande, rango, strikes y «en el negocio desde» (fecha de alta o, si falta, su primera semana cerrada); **Datos** con «✏️ Editar datos» (nombre, apellido, rango, Discord, IBAN, No cobra) y **Despedir**; **Rango** con la escalera (En Pruebas → Cajero → Cajero Experimentado → Encargado → Jefe), lo vendido esta semana frente al mínimo y **Subir a… / Bajar a…**; gráfica de las últimas 6 semanas cerradas (más la actual si Pagos la tiene cargada) con la línea del mínimo, media y mejor semana; **Strikes** semana a semana con ＋1, −1, Quitar todos y clic en una semana para ponerlo o quitarlo; **Historial**.
+- **Strikes:** solo los que tienen, separados en «Para despido» y «Con strikes», con cuadritos de las últimas semanas (rojo = strike, punteado = quitado), motivos, ＋1 / −1 / Despedir y el formulario «Poner strike» con motivo. Los de la semana en curso se ven en Pagos (allí el Jefe Tribal también los quita con ✕, los vuelve a poner con ↺ o pone uno a mano).
+- **Rangos:** tabla con la comisión y quién está en cada rango.
+- **Despedidos:** el registro con Readmitir (y Borrar registro solo para el Jefe Tribal).
+- Un strike quitado no suma ni corta la racha. Los ajustes se guardan en línea (`app_settings`, clave `strike_adj`) y cuentan en Pagos, Totales empleados y Copiar para Discord.
+- Todo cambio (alta, rango, nombre, Discord, IBAN, No cobra, strikes, despido, readmisión) se apunta solo en el historial (tabla `emp_historial`, SQL `supabase/7_historial_empleados.sql`). Si la tabla aún no existe, la ficha lo avisa y la página sigue funcionando.
+- **Permisos con la nube:** editar datos, subir / bajar, despedir y todo lo de strikes es **solo del Jefe Tribal**. Los Jefes lo ven todo en modo lectura, dan de alta (rangos bajos) y readmiten rangos bajos. **Sin la nube** (programa de escritorio) se cambia todo con la contraseña de empleados; el historial, la gráfica y los strikes por semana necesitan la nube.
+- **Avatares por rango** (también en el ranking de Pagos): En Pruebas = etiqueta ★ · Cajero = caja registradora ★★ · Cajero Experimentado = cesta de la compra ★★★ · Encargado = portapapeles ★★★★ · Jefe = maletín ★★★★★ · Jefe Tribal = logo del Badulaque ★★★★★. Sin rango: iniciales.
+- En el móvil: la lista arriba y la ficha a pantalla completa.
+
 ## Strikes, bono y cierre de semana
 
 - **Mínimo semanal: $ 20.000** (facturas pagadas + rascas). Quien cobra y no llega se lleva un **strike**; salen en Pagos debajo del ranking, en «Totales empleados» y en el texto de «Copiar para Discord». Los que tienen «No cobra» no llevan strikes.
-- **3 strikes seguidos = despido** (🚫). Los strikes se borran en cuanto la persona llega al mínimo una semana. En «Gestión de empleados» sale al lado del nombre cuántos lleva.
+- **3 strikes seguidos = despido** (🚫). Los strikes se borran en cuanto la persona llega al mínimo una semana. El Jefe Tribal puede quitar o poner strikes a mano (ver «Gestión de empleados»).
 - El **Jefe Tribal** (100 %, solo el dueño) no lleva strikes ni compite por el bono.
 - **Bono del empleado de la semana: $ 10.000** para quien más cobra (si hay empate, para todos). Se suma a lo que se le paga, al Total a pagar y al texto de Discord.
 - **Cerrar semana** (solo con la nube, para los Jefes): cuando hayas pagado, pulsa **Cerrar semana** en Pagos. Se guarda lo que vendió y cobró cada uno y quién llevó strike (tabla `pagos_semanas`, SQL `supabase/5_semanas_strikes.sql`). **Reabrir** la borra si te equivocaste.
 - En el programa de escritorio (sin nube) no hay historial: los avisos dicen solo «Strike», sin contar semanas.
-- Los ascensos no son automáticos: los das tú en «Gestión de empleados».
+- Los ascensos no son automáticos: los das tú desde la ficha en «Gestión de empleados».
 - Las cifras están en `WEEK_MIN`, `WEEK_BONUS` y `STRIKE_MAX` al principio de `app.js`.
 
 ## Despidos
 
-- En «Gestión de empleados» el botón **Despedir** sustituye a Eliminar: pide el motivo (3 strikes, inactividad / abandono, mal comportamiento, renuncia u otro, más un detalle opcional). Si lleva 3 strikes, el motivo ya viene puesto.
-- El despedido sale de la plantilla y de los pagos, pero queda en el registro **Despedidos** (abajo del todo en «Gestión de empleados»), con la fecha, el motivo y quién lo despidió. Desde ahí se puede **Readmitir** con su rango, Discord e IBAN.
+- En la ficha del empleado el botón **Despedir** sustituye a Eliminar: pide el motivo (3 strikes, inactividad / abandono, mal comportamiento, renuncia u otro, más un detalle opcional). Si lleva 3 strikes, el motivo ya viene puesto.
+- El despedido sale de la plantilla y de los pagos, pero queda en el registro **Despedidos** (pestaña de «Gestión de empleados»), con la fecha, el motivo y quién lo despidió. Desde ahí se puede **Readmitir** con su rango, Discord e IBAN.
 - Si añades a alguien con el mismo nombre que un despedido, la página propone readmitirlo.
 - Si un despedido tiene ventas en la semana, sale en el ranking como «Despedido» con $ 0 y sin strike.
 - Con la nube: pierde el acceso a la página aunque inicie sesión con su Discord. Solo el Jefe Tribal despide o readmite a un Jefe, y nadie puede despedirse a sí mismo. SQL: `supabase/6_despidos.sql`.
@@ -191,6 +206,7 @@ Las contraseñas no están escritas en el código: solo se guarda su huella SHA-
 ├── index.html     Página principal (pestañas y ventanas)
 ├── styles.css     Estilos (tema azul)
 ├── app.js         Caja, procesado de Discord, crafteos, empleados y contraseñas
+├── supabase/      SQL y función del bot para la nube (pegar en orden: 1 a 7)
 ├── favicon.ico
 ├── manifest.webmanifest  Datos de la app web (nombre, colores e iconos)
 ├── iconos/        Icono del Inicio y pantallas de arranque del iPhone
@@ -241,6 +257,13 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 26 · 1 de noviembre de 2026 · Gestión de empleados nueva
+- Ventana «👥 Empleados» por pestañas como en Aguila Motors (v92–v98): Listado con filtros, ficha de cada empleado (datos, rango con Subir / Bajar, gráfica de facturación, strikes semana a semana e historial), Strikes, Rangos y Despedidos.
+- Strikes a mano del Jefe Tribal (poner, quitar, ＋1, −1, quitar todos) guardados en línea; cuentan en Pagos, Totales empleados y Copiar para Discord. En Pagos, ✕ / ↺ y «Poner strike» para la semana en curso.
+- Historial automático de cada empleado y fecha de alta (SQL `7_historial_empleados.sql`).
+- Avatares por rango con icono y estrellas, también en el ranking de Pagos.
+- Con más de 3 strikes el aviso sigue diciendo «3/3 · despido».
 
 ### Versión 25 · 25 de octubre de 2026 · Avisos de la Caja
 - Aviso breve abajo (como en Aguila Motors) al añadir, quitar (clic derecho o Quitar), borrar una línea, cambiar la cantidad, Deshacer, Limpiar, copiar el total o el concepto y en los cobros por partes. Verde al añadir, naranja al quitar y azul al copiar; en el móvil sale encima de los botones.

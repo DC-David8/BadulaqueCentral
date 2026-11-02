@@ -504,13 +504,14 @@ const EMPLOYEE_OF_WEEK_TAG = "<@&1364707155130712195>";
 const WEEK_MIN = 20000;
 const WEEK_BONUS = 10000; // bono del empleado de la semana (quien mas cobra)
 const STRIKE_MAX = 3;
-let STRIKE_HIST = [];
+let STRIKE_HIST = []; // semanas cerradas, la mas reciente primero (solo con la nube)
 // El Jefe Tribal (el dueño, 100 %) no compite: ni bono del empleado de la semana ni strikes.
-const isOwnerRank = (rank) => normalizeKeySimple(rank || "") === normalizeKeySimple("Jefe Tribal"); // semanas cerradas, la mas reciente primero (solo con la nube)
+const isOwnerRank = (rank) => normalizeKeySimple(rank || "") === normalizeKeySimple("Jefe Tribal");
 
 async function loadStrikeHist() {
   if (!cloudOn() || !isJefe()) {
     STRIKE_HIST = [];
+    STRIKE_ADJ = {};
     return;
   }
   try {
@@ -518,6 +519,68 @@ async function loadStrikeHist() {
     STRIKE_HIST = Array.isArray(r) ? r : [];
   } catch {
     STRIKE_HIST = [];
+  }
+  try {
+    const rows = await cloud.req("/rest/v1/app_settings?select=value&key=eq.strike_adj");
+    const v = rows?.[0]?.value;
+    STRIKE_ADJ = v && typeof v === "object" ? v : {};
+  } catch {
+    STRIKE_ADJ = {};
+  }
+}
+
+// Strikes puestos o quitados a mano por el Jefe Tribal (app_settings "strike_adj"):
+// { "AAAA-MM-DD" (domingo de la semana): { "id:abc": { s: true|false, m: "motivo", por, at } } }
+// s:true = strike puesto a mano (aunque llegara al minimo). s:false = strike
+// quitado: esa semana ni suma ni corta la cuenta de strikes seguidos.
+let STRIKE_ADJ = {};
+function strikeKey(id, name) {
+  return id != null && id !== "" ? `id:${id}` : `n:${normalizeKeySimple(name)}`;
+}
+function strikeAdjFor(wk, id, name) {
+  const w = wk ? STRIKE_ADJ[wk] : null;
+  if (!w) return null;
+  return w[strikeKey(id, name)] || w[`n:${normalizeKeySimple(name)}`] || null;
+}
+
+// Strike de una semana para una persona: el automatico (no llegar al minimo)
+// salvo que el Jefe Tribal lo haya puesto o quitado a mano. Quien no cobra y
+// el Jefe Tribal nunca llevan strike.
+function weekStrike(wk, id, name, gross, noPay, rank = "") {
+  const exempt = noPay || isOwnerRank(rank);
+  const auto = !exempt && gross < WEEK_MIN;
+  const adj = exempt ? null : strikeAdjFor(wk, id, name);
+  if (!adj) return { on: auto, auto, reason: auto ? strikeReason(gross) : "" };
+  if (adj.s) return { on: true, auto, manual: true, reason: adj.m || "puesto por el Jefe Tribal" };
+  return { on: false, auto, forgiven: true, reason: adj.m || "" };
+}
+
+async function saveStrikeAdj(wk, id, name, value) {
+  return saveStrikeAdjMany([{ wk, value }], id, name);
+}
+
+// Varios cambios de una persona de una vez: [{ wk, value }] (value null = como lo calcula la pagina).
+async function saveStrikeAdjMany(changes, id, name) {
+  if (!cloudOn() || !AUTH.tribal) throw new Error("Solo el Jefe Tribal puede poner o quitar strikes.");
+  const next = JSON.parse(JSON.stringify(STRIKE_ADJ || {}));
+  for (const { wk, value } of changes) {
+    const w = next[wk] || (next[wk] = {});
+    delete w[`n:${normalizeKeySimple(name)}`];
+    if (value) w[strikeKey(id, name)] = { ...value, por: authWho(), at: new Date().toISOString() };
+    else delete w[strikeKey(id, name)];
+    if (!Object.keys(w).length) delete next[wk];
+  }
+  await cloud.req("/rest/v1/app_settings?on_conflict=key", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: [{ key: "strike_adj", value: next }],
+  });
+  STRIKE_ADJ = next;
+  const dm = (iso) => `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}`;
+  for (const { wk, value } of changes) {
+    if (value?.s) empLog(id, "strike", `⚠️ Strike puesto (semana del ${dm(wk)})${value.m ? `: ${value.m}` : ""}`);
+    else if (value) empLog(id, "strike", `✅ Strike quitado (semana del ${dm(wk)})${value.m ? `: ${value.m}` : ""}`);
+    else empLog(id, "strike", `↺ Strike de la semana del ${dm(wk)} vuelve a lo que calcula la página`);
   }
 }
 
@@ -527,22 +590,69 @@ function strikeRowIn(week, id, name) {
 }
 
 // Strikes seguidos en semanas cerradas anteriores a "beforeWeek" (AAAA-MM-DD;
-// vacio = todas). Una semana en la que llego al minimo corta la cuenta.
+// vacio = todas). Una semana en la que llego al minimo corta la cuenta; un
+// strike quitado por el Jefe Tribal ni suma ni corta.
 function strikesBefore(id, name, beforeWeek = "") {
   let n = 0;
   for (const w of STRIKE_HIST) {
     if (beforeWeek && String(w.semana) >= beforeWeek) continue;
     const r = strikeRowIn(w, id, name);
     if (!r || r.noPay) continue;
-    if (r.strike) n++;
+    const adj = strikeAdjFor(String(w.semana), id, name);
+    if (adj && !adj.s) continue;
+    if (r.strike || adj?.s) n++;
     else break;
   }
   return n;
 }
 
+// Ultima semana cerrada cuyo strike cuenta en la racha (para quitarlo con "−1").
+function lastCountedStrikeWeek(id, name, beforeWeek = "") {
+  for (const w of STRIKE_HIST) {
+    if (beforeWeek && String(w.semana) >= beforeWeek) continue;
+    const r = strikeRowIn(w, id, name);
+    if (!r || r.noPay) continue;
+    const adj = strikeAdjFor(String(w.semana), id, name);
+    if (adj && !adj.s) continue;
+    if (r.strike || adj?.s) return String(w.semana);
+    break;
+  }
+  return "";
+}
+
+// Historial de strikes de una persona en las semanas cerradas (la mas reciente primero).
+function strikeHistoryOf(id, name) {
+  const out = [];
+  let streak = true;
+  for (const w of STRIKE_HIST) {
+    const r = strikeRowIn(w, id, name);
+    if (!r || r.noPay) continue;
+    const wk = String(w.semana);
+    const adj = strikeAdjFor(wk, id, name);
+    const auto = !!r.strike;
+    const on = adj ? !!adj.s : auto;
+    const forgiven = !!(adj && !adj.s);
+    const counted = streak && on;
+    if (streak && !on && !forgiven) streak = false;
+    out.push({ wk, hasta: String(w.hasta || ""), auto, on, forgiven, manual: !!adj?.s && !auto, motivo: adj?.m || r.strikeMotivo || (auto ? strikeReason(r.gross || 0) : ""), counted, gross: Number(r.gross || 0) });
+  }
+  return out;
+}
+
+// A que semana va un ＋1 y cual quita un −1 (mismas reglas que el editor).
+function strikePlusWeek(emp) {
+  return strikeHistoryOf(emp.id, fullName(emp)).find((h) => !h.on) || null;
+}
+function strikeMinusWeek(emp) {
+  return strikeHistoryOf(emp.id, fullName(emp)).find((h) => h.counted) || null;
+}
+// Valor para que una semana quede como "want": si coincide con lo automatico, se borra el ajuste.
+const strikeValueFor = (h, want, motivo) => (want === h.auto ? null : { s: want, m: motivo });
+
 // Sin la nube (programa de escritorio) no hay historial: solo "Strike".
 function strikeLabel(n) {
   if (!cloudOn()) return "Strike";
+  n = Math.min(n, STRIKE_MAX); // con mas de 3 sigue siendo despido: se muestra 3/3
   return n >= STRIKE_MAX ? `Strike ${n}/${STRIKE_MAX} · despido` : `Strike ${n}/${STRIKE_MAX}`;
 }
 
@@ -550,8 +660,102 @@ function strikeReason(gross) {
   return gross > 0 ? `no llegó al mínimo: ${fmtMoney(gross)} de ${fmtMoney(WEEK_MIN)}` : "no vendió nada";
 }
 
-function strikeText(n, gross = 0) {
-  return `${n >= STRIKE_MAX ? "🚫" : "⚠️"} **${strikeLabel(n)}** (${strikeReason(gross)})`;
+function strikeText(n, gross = 0, why = "") {
+  return `${n >= STRIKE_MAX && cloudOn() ? "🚫" : "⚠️"} **${strikeLabel(n)}** (${why || strikeReason(gross)})`;
+}
+
+// ---------------------------------------------------------------------------
+// Historial de cada empleado (tabla emp_historial, SQL 7). Se guarda sin
+// esperar: si la tabla no existe todavia, simplemente no se apunta nada.
+// ---------------------------------------------------------------------------
+function empLog(empId, tipo, texto) {
+  if (!empId || !cloudOn() || !cloud.session || !isJefe()) return;
+  cloud
+    .req("/rest/v1/emp_historial", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: [{ employee_id: String(empId), tipo, texto, por: authWho() }],
+    })
+    .catch(() => {});
+}
+async function empHistory(empId) {
+  return cloud.req(`/rest/v1/emp_historial?select=at,tipo,texto,por&employee_id=eq.${encodeURIComponent(empId)}&order=at.desc&limit=60`);
+}
+
+// Lo facturado esta semana por persona (lo deja Pagos al procesar).
+let PAGOS_WEEK_GROSS = null;
+
+// ---------------------------------------------------------------------------
+// Avatar por rango: icono del rango sobre un circulo de su color y estrellas
+// debajo con el nivel. El Jefe Tribal lleva el logo del Badulaque. Sin rango:
+// iniciales.
+// ---------------------------------------------------------------------------
+const EMP_RANK_CLS = {
+  "en pruebas": "r-pruebas",
+  cajero: "r-cajero",
+  "cajero experimentado": "r-exp",
+  encargado: "r-encargado",
+  jefe: "r-jefe",
+  "jefe tribal": "r-tribal",
+};
+const empRankCls = (rank) => EMP_RANK_CLS[normalizeKeySimple(rank || "")] || "r-none";
+const empInitials = (e) => `${String(e.name || "").trim().charAt(0)}${String(e.surname || "").trim().charAt(0)}`.toUpperCase() || "?";
+const RANK_ICON_SVG = {
+  // etiqueta de "nuevo"
+  "en pruebas": '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.6" fill="currentColor"/><path d="M11.5 11.5l3 3M14.5 11.5l-3 3"/>',
+  // caja registradora
+  cajero: '<rect x="3" y="12" width="18" height="8.5" rx="1.5"/><path d="M5.5 12l1.2-5h10.6l1.2 5"/><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M3 16.5h18M10.5 18.5h3"/>',
+  // cesta de la compra
+  "cajero experimentado": '<path d="M3 10h18"/><path d="M5 10l1.6 9a1.5 1.5 0 0 0 1.5 1.2h7.8a1.5 1.5 0 0 0 1.5-1.2L19 10"/><path d="M8.5 10L11 4M15.5 10L13 4"/><path d="M9.5 13.5v3.5M14.5 13.5v3.5M12 13.5v3.5"/>',
+  // portapapeles
+  encargado: '<rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3.5" rx="1"/><path d="M8.5 13.5l2.5 2.5 4.5-5"/>',
+  // maletin
+  jefe: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12.5h18"/><rect x="10.5" y="11" width="3" height="3" rx=".6" fill="currentColor"/>',
+};
+const RANK_STARS = { "en pruebas": 1, cajero: 2, "cajero experimentado": 3, encargado: 4, jefe: 5, "jefe tribal": 5 };
+const RANK_STAR_SVG = '<svg viewBox="0 0 10 10" aria-hidden="true"><polygon points="5,0.4 6.35,3.4 9.6,3.7 7.15,5.85 7.85,9.1 5,7.45 2.15,9.1 2.85,5.85 0.4,3.7 3.65,3.4" fill="currentColor"/></svg>';
+function rankAvatar(rank, fallbackText = "?", extraCls = "") {
+  const key = normalizeKeySimple(rank || "");
+  const n = RANK_STARS[key] || 0;
+  const div = document.createElement("div");
+  div.className = `rk-av ${empRankCls(rank)}${extraCls ? " " + extraCls : ""}`;
+  if (key === "jefe tribal") {
+    const img = document.createElement("img");
+    img.src = "badulaque_central_logo.png";
+    img.alt = "";
+    img.onerror = () => img.replaceWith(document.createTextNode(fallbackText));
+    div.appendChild(img);
+  } else if (RANK_ICON_SVG[key]) {
+    div.insertAdjacentHTML("beforeend", `<svg class="rk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${RANK_ICON_SVG[key]}</svg>`);
+  } else {
+    div.classList.add("rk-txt");
+    div.textContent = fallbackText;
+  }
+  if (n) {
+    const st = document.createElement("span");
+    st.className = "rk-stars";
+    st.innerHTML = RANK_STAR_SVG.repeat(n);
+    div.appendChild(st);
+  }
+  if (rank) div.title = `${rank}${n ? ` · nivel ${n}` : ""}`;
+  return div;
+}
+
+// Escalera para Subir / Bajar desde la ficha (el Jefe Tribal no entra: es solo del dueño).
+const EMP_LADDER = ["En Pruebas", "Cajero", "Cajero Experimentado", "Encargado", "Jefe"];
+
+// Posicion del rango (mayor = mas arriba). Sin rango o desconocido: abajo del todo.
+function rankOrder(rank) {
+  const key = normalizeKeySimple(rank || "");
+  return RANKS.findIndex((r) => normalizeKeySimple(r.label) === key);
+}
+
+// Orden de la plantilla: Jefe Tribal arriba ... En Pruebas abajo; dentro del rango, por apellido.
+function byRankThenName(a, b) {
+  return (
+    rankOrder(b.rank) - rankOrder(a.rank) ||
+    `${a.surname || ""} ${a.name || ""}`.localeCompare(`${b.surname || ""} ${b.name || ""}`, "es", { sensitivity: "base" })
+  );
 }
 
 // Semana que se esta revisando en Pagos (domingo del cuadro de fechas).
@@ -842,7 +1046,31 @@ const empFromRow = (r) => ({
   firedAt: r.despedido_at || "",
   firedBy: String(r.despedido_por || ""),
   firedReason: String(r.despedido_motivo || ""),
+  altaAt: r.alta_at || "",
 });
+
+// Apunta en el historial lo que cambia entre dos versiones del mismo empleado.
+function empLogDiff(before, next) {
+  if (!next?.id) return;
+  const id = next.id;
+  if (!before) {
+    empLog(id, "alta", `➕ Entró al Badulaque${next.rank ? ` como ${next.rank}` : ""}`);
+    return;
+  }
+  if (!before.firedAt && next.firedAt) {
+    empLog(id, "despido", `🚪 Despedido${next.firedReason ? `: ${next.firedReason}` : ""}`);
+    return;
+  }
+  if (before.firedAt && !next.firedAt) empLog(id, "alta", `↩️ Readmitido${next.rank ? ` como ${next.rank}` : ""}`);
+  if ((before.rank || "") !== (next.rank || "")) {
+    const up = rankOrder(next.rank) > rankOrder(before.rank);
+    empLog(id, "rango", `${up ? "⬆️ Ascendido" : "⬇️ Bajado"} de ${before.rank || "sin rango"} a ${next.rank || "sin rango"}`);
+  }
+  if (fullName(before) !== fullName(next)) empLog(id, "datos", `✏️ Cambio de nombre: ${fullName(before)} → ${fullName(next)}`);
+  if (!!before.noPay !== !!next.noPay) empLog(id, "datos", next.noPay ? "💸 Marcado como «No cobra»" : "💸 Vuelve a cobrar la nómina");
+  if ((before.discord || "") !== (next.discord || "")) empLog(id, "datos", next.discord ? "🔗 Discord cambiado" : "🔗 Discord quitado");
+  if ((before.iban || "") !== (next.iban || "")) empLog(id, "datos", `🏦 IBAN: ${next.iban || "quitado"}`);
+}
 
 async function empCloudLoad() {
   const rows = await cloud.req("/rest/v1/employees?select=*&order=surname.asc,name.asc&limit=1000");
@@ -871,10 +1099,11 @@ async function empCloudInsert(row) {
   });
   const e = empFromRow(out[0]);
   EMP_CLOUD.list.push(e);
+  empLogDiff(null, e);
   return e;
 }
 
-async function empCloudPatch(id, patch) {
+async function empCloudPatch(id, patch, beforeSnap = null) {
   empCloudRequireJefe();
   const out = await cloud.req(`/rest/v1/employees?id=eq.${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -884,7 +1113,9 @@ async function empCloudPatch(id, patch) {
   if (!out?.length) throw new Error("No se pudo guardar: no tienes permiso para cambiar a este empleado.");
   const fresh = empFromRow(out[0]);
   const idx = EMP_CLOUD.list.findIndex((e) => e.id === fresh.id);
+  const before = beforeSnap || (idx >= 0 ? EMP_CLOUD.list[idx] : null);
   if (idx >= 0) EMP_CLOUD.list[idx] = fresh;
+  if (before) empLogDiff(before, fresh);
   return fresh;
 }
 
@@ -908,7 +1139,7 @@ function empCloudSet(fullNameStr, patch, onDone) {
   if ("iban" in patch) row.iban = patch.iban;
   if ("noPay" in patch) row.no_pay = !!patch.noPay;
   Object.assign(e, patch);
-  empCloudPatch(e.id, row)
+  empCloudPatch(e.id, row, prev)
     .then(() => onDone?.(true))
     .catch((err) => {
       Object.assign(e, prev);
@@ -2582,7 +2813,8 @@ function setupContabilidad() {
     rows.forEach((r, i) => {
       const card = el("div", "pg-row" + (r.bonus ? " first" : ""));
       const initials = r.name.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-      const av = el("div", "pg-av" + (r.noPay || !r.emp ? " np" : ""), initials);
+      const avCls = "pg-av" + (r.noPay || !r.emp ? " np" : "");
+      const av = r.emp && r.rank ? rankAvatar(r.rank, initials, avCls) : el("div", avCls, initials);
       if (r.bonus) {
         av.appendChild(el("span", "crown", "★"));
         av.title = "Empleado de la semana";
@@ -2617,21 +2849,19 @@ function setupContabilidad() {
       list.appendChild(card);
     });
 
-    // Strikes: quien cobra y no llega al minimo (o no vendio nada).
+    // Strikes: quien cobra y no llega al minimo (o no vendio nada), salvo que
+    // el Jefe Tribal lo quite o lo ponga a mano (ajustes en app_settings).
     const wk = payWeekKey();
     const grossOf = (e) => rows.find((x) => x.emp === e)?.total || 0;
-    const rankIdx = (e) => {
-      const i = RANKS.findIndex((x) => normalizeKeySimple(x.label) === normalizeKeySimple(e.rank || ""));
-      return i < 0 ? -1 : i;
-    };
-    const idle = employees
-      .filter((e) => !isEmployeeNoPay(fullName(e)) && !isOwnerRank(e.rank) && grossOf(e) < WEEK_MIN)
-      .sort((a, b) => rankIdx(b) - rankIdx(a) || fullName(a).localeCompare(fullName(b), "es"));
+    const wsOf = new Map(employees.map((e) => [e, weekStrike(wk, e.id, fullName(e), grossOf(e), isEmployeeNoPay(fullName(e)), e.rank)]));
+    const idle = employees.filter((e) => wsOf.get(e).on).sort(byRankThenName);
+    const forgiven = employees.filter((e) => wsOf.get(e).forgiven && wsOf.get(e).auto).sort(byRankThenName);
     lastSnapshot = {
       rows: employees.map((e) => {
         const name = fullName(e);
         const r = rows.find((x) => x.emp === e);
         const noPay = isEmployeeNoPay(name);
+        const ws = wsOf.get(e);
         return {
           id: e.id ?? null,
           name,
@@ -2640,29 +2870,102 @@ function setupContabilidad() {
           payout: r && !noPay ? r.toPay : 0,
           bonus: r && !noPay ? r.bonus : 0,
           noPay,
-          strike: !noPay && !isOwnerRank(e.rank) && (r ? r.total : 0) < WEEK_MIN,
+          strike: ws.on,
+          ...(ws.manual || ws.forgiven ? { strikeMotivo: ws.reason } : {}),
         };
       }),
       total: invSummary.paid_total + salesSummary.total,
       facturas: invSummary.paid_count,
       rascas: salesSummary.qty,
     };
-    if (idle.length) {
+    const boss = cloudOn() && AUTH.tribal && wk;
+    const act = async (btn, fn) => {
+      btn.disabled = true;
+      try {
+        await fn();
+        refresh();
+      } catch (err) {
+        btn.disabled = false;
+        alert(`No se pudo guardar: ${err.message || err}`);
+      }
+    };
+    if (idle.length || forgiven.length || boss) {
       const box = el("div", "pg-warn-box");
       box.appendChild(el("div", "pg-warn-head", `⚠️ Strikes de esta semana · no llegaron a ${fmtMoney(WEEK_MIN)} (${idle.length})`));
       const chips = el("div", "pg-warn-list");
+      if (!idle.length) chips.appendChild(el("span", "muted pg-strike-why", "Nadie tiene strike esta semana."));
       for (const e of idle) {
+        const ws = wsOf.get(e);
         const n = strikesBefore(e.id, fullName(e), wk) + 1;
         const max = cloudOn() && n >= STRIKE_MAX;
-        const chip = el("span", "pg-warn-chip" + (max ? " max" : ""));
+        const chip = el("span", "pg-warn-chip" + (max ? " max" : "") + (ws.manual ? " manual" : ""));
         chip.appendChild(el("b", "", fullName(e)));
         if (e.rank) chip.appendChild(el("span", "pg-badge " + (RANK_BADGE[normalizeKeySimple(e.rank)] || "w-nopay"), e.rank));
         const g = grossOf(e);
-        chip.appendChild(el("span", "pg-strike-why", g > 0 ? `${fmtMoney(g)} de ${fmtMoney(WEEK_MIN)}` : "Sin ventas"));
+        chip.appendChild(el("span", "pg-strike-why", ws.manual ? `✍️ ${ws.reason}` : g > 0 ? `${fmtMoney(g)} de ${fmtMoney(WEEK_MIN)}` : "Sin ventas"));
         chip.appendChild(el("span", "pg-strike" + (max ? " max" : ""), max ? `🚫 ${strikeLabel(n)}` : strikeLabel(n)));
+        if (boss) {
+          const x = el("button", "pg-chip-btn", "✕");
+          x.type = "button";
+          x.title = ws.manual ? "Quitar este strike puesto a mano" : "Quitar el strike (ausencia justificada, etc.)";
+          x.addEventListener("click", () => {
+            if (ws.manual && !ws.auto) return act(x, () => saveStrikeAdj(wk, e.id, fullName(e), null));
+            const m = prompt(`Quitar el strike de ${fullName(e)} esta semana.\n\nMotivo (opcional, p. ej. «ausencia justificada»):`, "");
+            if (m === null) return;
+            act(x, () => saveStrikeAdj(wk, e.id, fullName(e), { s: false, m: m.trim() || "quitado por el Jefe Tribal" }));
+          });
+          chip.appendChild(x);
+        }
         chips.appendChild(chip);
       }
       box.appendChild(chips);
+      if (forgiven.length) {
+        const fl = el("div", "pg-warn-list pg-forgiven");
+        fl.appendChild(el("span", "pg-strike-why", "Quitados por el Jefe Tribal:"));
+        for (const e of forgiven) {
+          const ws = wsOf.get(e);
+          const chip = el("span", "pg-warn-chip off");
+          chip.appendChild(el("b", "", fullName(e)));
+          if (ws.reason) chip.appendChild(el("span", "pg-strike-why", ws.reason));
+          if (boss) {
+            const u = el("button", "pg-chip-btn", "↺");
+            u.type = "button";
+            u.title = "Volver a poner el strike";
+            u.addEventListener("click", () => act(u, () => saveStrikeAdj(wk, e.id, fullName(e), null)));
+            chip.appendChild(u);
+          }
+          fl.appendChild(chip);
+        }
+        box.appendChild(fl);
+      }
+      if (boss) {
+        // Poner un strike a mano esta semana (mal comportamiento, etc.).
+        const add = el("div", "pg-strike-add");
+        const sel = document.createElement("select");
+        sel.className = "text-input";
+        sel.appendChild(new Option("Poner strike a…", ""));
+        for (const e of employees) {
+          const ws = wsOf.get(e);
+          if (ws.on || isEmployeeNoPay(fullName(e)) || isOwnerRank(e.rank)) continue;
+          sel.appendChild(new Option(`${fullName(e)}${e.rank ? ` (${e.rank})` : ""}`, String(e.id)));
+        }
+        const why = document.createElement("input");
+        why.className = "text-input";
+        why.placeholder = "Motivo (p. ej. mal comportamiento)";
+        why.maxLength = 120;
+        const go = el("button", "", "➕ Poner strike");
+        go.type = "button";
+        go.addEventListener("click", () => {
+          const e = employees.find((x) => String(x.id) === sel.value);
+          if (!e) return alert("Elige a quién ponerle el strike.");
+          const m = why.value.trim();
+          if (!m) return alert("Escribe el motivo del strike.");
+          act(go, () => saveStrikeAdj(wk, e.id, fullName(e), { s: true, m }));
+        });
+        add.append(sel, why, go);
+        box.appendChild(add);
+        box.appendChild(el("p", "muted pg-strike-why pg-strike-note", "Los strikes de semanas anteriores se gestionan en 👥 Gestión de empleados → Strikes."));
+      }
       list.appendChild(box);
     }
     renderClose();
@@ -2795,6 +3098,7 @@ function setupContabilidad() {
       employees = [];
     }
     const rows = buildRanking(employees);
+    PAGOS_WEEK_GROSS = rows.length ? new Map(rows.map((r) => [normalizeKeySimple(r.name), r.total])) : null;
     const totalAPagar = rows.reduce((a, r) => a + (r.emp && !r.noPay ? r.toPay : 0), 0);
 
     const totalGeneral = invSummary.total + salesSummary.total;
@@ -3262,7 +3566,9 @@ function setupEmployeesModal(state, refreshPagos) {
     for (const r of totalsRows) {
       r.bonus = maxPayout > 0 && competes(r) && r.payout === maxPayout ? WEEK_BONUS : 0;
       r.toPay = r.payout + r.bonus;
-      r.strike = competes(r) && r.gross < WEEK_MIN;
+      const ws = weekStrike(wk, r.id, r.name, r.gross, r.noPay, r.rank);
+      r.strike = ws.on;
+      r.strikeWhy = ws.reason;
       r.strikeN = r.strike ? strikesBefore(r.id, r.name, wk) + 1 : 0;
     }
   }
@@ -3273,7 +3579,7 @@ function setupEmployeesModal(state, refreshPagos) {
       const tr = document.createElement("tr");
       if (row.id === selectedId) tr.classList.add("is-selected");
       tr.innerHTML = `
-        <td>${escapeHtml(row.name)}${row.strike ? `<br><small class="warn">${row.strikeN >= STRIKE_MAX && cloudOn() ? "🚫" : "⚠️"} ${escapeHtml(strikeLabel(row.strikeN))} (${escapeHtml(strikeReason(row.gross))})</small>` : ""}</td>
+        <td>${escapeHtml(row.name)}${row.strike ? `<br><small class="warn">${row.strikeN >= STRIKE_MAX && cloudOn() ? "🚫" : "⚠️"} ${escapeHtml(strikeLabel(row.strikeN))} (${escapeHtml(row.strikeWhy || strikeReason(row.gross))})</small>` : ""}</td>
         <td>${escapeHtml(row.rank || "-")}</td>
         <td class="num">${row.pct ? pctText(row.pct) : "-"}</td>
         <td class="num">${fmtMoney(row.paid)}</td>
@@ -3335,7 +3641,7 @@ function setupEmployeesModal(state, refreshPagos) {
       ? `${labelForCopy(row)} | ${pct} | Cobrado: ${fmtMoney(row.gross)} | ${NO_PAY_TEXT}`
       : `${labelForCopy(row)} | ${pct} | Cobrado: ${fmtMoney(row.gross)} | A pagar: ${fmtMoney(row.toPay)}${row.bonus ? ` (incl. bono ${fmtMoney(row.bonus)})` : ""} | ${ibanForCopy(row)}`;
     if (isEmployeeOfWeek(row)) text += ` | ${EMPLOYEE_OF_WEEK_TAG}`;
-    if (row.strike) text += ` | ${strikeText(row.strikeN, row.gross)}`;
+    if (row.strike) text += ` | ${strikeText(row.strikeN, row.gross, row.strikeWhy)}`;
     const ok = await copyText(text);
     if (!ok) openCopyFallback(text);
   });
@@ -3355,7 +3661,7 @@ function setupEmployeesModal(state, refreshPagos) {
           ? `* ${labelForCopy(r)}: ${NO_PAY_TEXT}`
           : `* ${labelForCopy(r)}: ${payForCopy(r)} · ${ibanForCopy(r)}`;
         if (isEmployeeOfWeek(r)) line += ` ${EMPLOYEE_OF_WEEK_TAG}`;
-        if (r.strike) line += ` ${strikeText(r.strikeN, r.gross)}`;
+        if (r.strike) line += ` ${strikeText(r.strikeN, r.gross, r.strikeWhy)}`;
         return line;
       })
       .join("\n");
@@ -3413,194 +3719,645 @@ function setupEmployeesModal(state, refreshPagos) {
   });
 }
 
+// Editor de strikes de una persona (solo Jefe Tribal): semanas cerradas,
+// ＋1 / −1 / quitar todos y clic en una semana para poner o quitar.
+function buildStrikeEditor(emp, onDone) {
+  const name = fullName(emp);
+  const id = emp.id;
+  const mk = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const dm = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
+  const box = mk("div", "strike-editor");
+  const hist = strikeHistoryOf(id, name);
+  const run = async (btn, changes) => {
+    btn.disabled = true;
+    try {
+      await saveStrikeAdjMany(changes, id, name);
+      onDone?.();
+    } catch (err) {
+      btn.disabled = false;
+      alert(`No se pudo guardar: ${err.message || err}`);
+    }
+  };
+  const acts = mk("div", "strike-ed-acts");
+  const plus = mk("button", "small", "＋1 strike");
+  plus.type = "button";
+  // ＋1: la semana mas reciente sin strike (o con el strike quitado).
+  const breaker = hist.find((h) => !h.on);
+  plus.disabled = !breaker;
+  plus.title = breaker ? `Se marca la semana del ${dm(breaker.wk)}` : "No hay semanas cerradas donde ponerlo";
+  plus.addEventListener("click", () => {
+    const m = prompt(`Poner un strike a ${name} (semana del ${dm(breaker.wk)}).\n\nMotivo:`, "");
+    if (m === null) return;
+    if (!m.trim()) return alert("Escribe el motivo del strike.");
+    run(plus, [{ wk: breaker.wk, value: strikeValueFor(breaker, true, m.trim()) }]);
+  });
+  const minus = mk("button", "ghost small", "−1 strike");
+  minus.type = "button";
+  const lastOn = hist.find((h) => h.counted);
+  minus.disabled = !lastOn;
+  minus.addEventListener("click", () => {
+    const m = prompt(`Quitar a ${name} el strike de la semana del ${dm(lastOn.wk)}.\n\nMotivo (opcional):`, "");
+    if (m === null) return;
+    run(minus, [{ wk: lastOn.wk, value: strikeValueFor(lastOn, false, m.trim() || "quitado por el Jefe Tribal") }]);
+  });
+  const all = mk("button", "ghost small", "Quitar todos");
+  all.type = "button";
+  const counted = hist.filter((h) => h.counted);
+  all.disabled = !counted.length;
+  all.addEventListener("click", () => {
+    const m = prompt(`Quitar los ${counted.length} strikes seguidos de ${name}.\n\nMotivo (opcional):`, "");
+    if (m === null) return;
+    run(all, counted.map((h) => ({ wk: h.wk, value: strikeValueFor(h, false, m.trim() || "quitado por el Jefe Tribal") })));
+  });
+  acts.append(plus, minus, all);
+  box.appendChild(acts);
+  const weeks = mk("div", "strike-ed-weeks");
+  if (!hist.length) weeks.appendChild(mk("span", "muted emp-small", "Todavía no tiene semanas cerradas."));
+  for (const h of hist.slice(0, 10)) {
+    const b = mk("button", "strike-week" + (h.on ? " on" : "") + (h.forgiven ? " off" : "") + (h.counted ? " counted" : ""));
+    b.type = "button";
+    b.appendChild(mk("b", "", `${dm(h.wk)}–${dm(h.hasta)}`));
+    b.appendChild(mk("span", "", h.on ? `⚠️ ${h.manual ? "✍️ " : ""}${h.motivo || "strike"}` : h.forgiven ? `Quitado${h.motivo ? `: ${h.motivo}` : ""}` : `✅ ${fmtMoney(h.gross)}`));
+    b.title = h.on ? "Clic para quitar este strike" : "Clic para poner un strike esta semana";
+    b.addEventListener("click", () => {
+      if (h.on) {
+        const m = prompt(`Quitar el strike de ${name} de la semana del ${dm(h.wk)}.\n\nMotivo (opcional):`, "");
+        if (m === null) return;
+        run(b, [{ wk: h.wk, value: strikeValueFor(h, false, m.trim() || "quitado por el Jefe Tribal") }]);
+      } else {
+        const m = prompt(`Poner un strike a ${name} en la semana del ${dm(h.wk)}.\n\nMotivo:`, "");
+        if (m === null) return;
+        if (!m.trim() && !(h.forgiven && h.auto)) return alert("Escribe el motivo del strike.");
+        run(b, [{ wk: h.wk, value: strikeValueFor(h, true, m.trim()) }]);
+      }
+    });
+    weeks.appendChild(b);
+  }
+  box.appendChild(weeks);
+  return box;
+}
+
+// ===================== Gestión de empleados (por pestañas) =====================
+// Listado · Nuevo empleado · Strikes · Rangos · Despedidos. El listado solo
+// informa; al tocar a alguien se abre su ficha. Con la nube: editar, subir /
+// bajar, despedir y los strikes son del Jefe Tribal; los Jefes lo ven todo,
+// dan de alta (rangos bajos) y readmiten rangos bajos. Sin la nube (programa
+// de escritorio): con la contraseña de empleados.
 function setupEmployeesAdminModal({ onChanged }) {
   const modal = byId("employees-admin-modal");
   const status = byId("emp-admin-status");
   const passInput = byId("emp-admin-pass");
-
   const nameInput = byId("emp-new-name");
   const surInput = byId("emp-new-surname");
   const rankInput = byId("emp-new-rank");
   const discordInput = byId("emp-new-discord");
   const ibanInput = byId("emp-new-iban");
-
   const searchInput = byId("emp-search");
-  const body = byId("emp-admin-body");
-
-  // Desplegable de rangos con su %; un rango antiguo que no este en la lista se conserva.
-  function fillRankSelect(select, current) {
-    select.textContent = "";
-    select.disabled = false;
-    const blank = document.createElement("option");
-    blank.value = "";
-    blank.textContent = "Sin rango";
-    select.appendChild(blank);
-    for (const r of RANKS) {
-      const opt = document.createElement("option");
-      opt.value = r.label;
-      opt.textContent = `${r.label} (${pctText(r.pct)})`;
-      // Con la nube, solo el Jefe Tribal da los rangos Jefe y Jefe Tribal.
-      if (cloudOn() && !AUTH.tribal && HIGH_RANKS.includes(r.label) && r.label !== current) {
-        opt.disabled = true;
-        opt.textContent += " · solo Jefe Tribal";
-      }
-      select.appendChild(opt);
-    }
-    if (cloudOn() && !AUTH.tribal && HIGH_RANKS.includes(current)) select.disabled = true;
-    if (current && !pctForRank(current)) {
-      const opt = document.createElement("option");
-      opt.value = current;
-      opt.textContent = `${current} (sin %)`;
-      select.appendChild(opt);
-    }
-    select.value = current || "";
-  }
-  fillRankSelect(rankInput, "");
 
   let unlocked = false;
   let adminPass = "";
   let employees = [];
+  let tab = "list";
+  let filter = "all";
+  let sortBy = "rank";
+  let fichaId = null;
+  let editing = false;
+
+  const mk = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const btn = (text, cls = "ghost", title = "") => {
+    const b = mk("button", cls, text);
+    b.type = "button";
+    if (title) b.title = title;
+    return b;
+  };
+  const dm = (iso) => (iso ? `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}` : "");
+  const isHigh = (rank) => HIGH_RANKS.includes(rank);
+  const hasAccess = () => (cloudOn() ? isJefe() : true);
+  // Editar, subir/bajar y despedir: Jefe Tribal con la nube; sin ella, con la contraseña.
+  const canEdit = () => (cloudOn() ? isJefe() && AUTH.tribal : unlocked);
+  // Dar de alta y readmitir: cualquier Jefe con la nube; sin ella, con la contraseña.
+  const canAdd = () => (cloudOn() ? isJefe() : unlocked);
+  // Strikes: solo el Jefe Tribal y con la nube (necesitan las semanas cerradas).
+  const boss = () => cloudOn() && isJefe() && AUTH.tribal;
+  const isSelf = (e) => !!(cloudOn() && AUTH.discordId && getEmployeeDiscord(fullName(e)) === AUTH.discordId);
+  const strikesOf = (e) => (cloudOn() ? strikesBefore(e.id, fullName(e)) : 0);
+  const pctOf = (e) => (e.rank ? `${Math.round(pctForRank(e.rank) * 100)} %` : "-");
+  const cloudRow = (e) => (cloudOn() ? EMP_CLOUD.list.find((x) => String(x.id) === String(e.id)) : null);
 
   function setStatus(text, ok = false) {
     status.textContent = text;
     status.style.color = ok ? "var(--ok)" : "var(--muted)";
   }
 
-  const needUnlock = () => {
-    if (cloudOn()) {
-      if (isJefe()) return false;
-      alert("Solo los Jefes pueden cambiar la plantilla.");
-      return true;
-    }
-    if (unlocked) return false;
-    alert("Primero desbloquea con la contraseña.");
-    return true;
-  };
-
-  function renderList() {
-    const q = normalizeKeySimple(searchInput.value || "");
-    const shown = !q
-      ? employees
-      : employees.filter((e) => normalizeKeySimple(`${e.name} ${e.surname} ${e.rank || ""}`).includes(q));
-
-    body.innerHTML = "";
-    if (!shown.length) {
-      body.innerHTML = `<tr><td colspan="7" class="muted">${employees.length ? "Sin resultados" : "Aún no hay empleados. Añádelos arriba."}</td></tr>`;
-      return;
-    }
-    for (const e of shown) {
-      const full = fullName(e);
-      const pct = pctForRank(e.rank);
-      const sN = cloudOn() ? strikesBefore(e.id, full) : 0;
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(full)}${sN ? ` <span class="pg-strike${sN >= STRIKE_MAX ? " max" : ""}" title="Strikes seguidos: semanas cerradas sin llegar al mínimo de ${fmtMoney(WEEK_MIN)}">${sN >= STRIKE_MAX ? "🚫 " : "⚠️ "}${sN}/${STRIKE_MAX}</span>` : ""}</td>
-        <td><select class="text-input emp-rank-select" aria-label="Rango de ${escapeHtml(full)}"></select></td>
-        <td class="num emp-pct">${e.rank ? pctText(pct) : "-"}</td>
-        <td><input class="text-input emp-discord-input" type="text" inputmode="numeric" placeholder="ID de Discord" aria-label="Discord de ${escapeHtml(full)}" title="ID de Discord: clic derecho sobre la persona → Copiar ID de usuario" /></td>
-        <td><input class="text-input emp-iban-input" type="text" placeholder="J000000" maxlength="9" aria-label="IBAN de ${escapeHtml(full)}" title="IBAN del banco del servidor (una letra y 6 números)" /></td>
-        <td class="center"><input class="emp-nopay-input" type="checkbox" aria-label="${escapeHtml(full)} no cobra" title="No cobra la nómina: no se le pide IBAN y no suma al Total a Pagar" /></td>
-        <td class="num"><button type="button" class="danger small" data-del="1">Despedir</button></td>
-      `;
-      body.appendChild(tr);
-
-      const select = tr.querySelector(".emp-rank-select");
-      fillRankSelect(select, e.rank || "");
-      select.addEventListener("change", async () => {
-        if (needUnlock()) {
-          select.value = e.rank || "";
-          return;
-        }
-        try {
-          await updateEmployee(e.id, { rank: select.value }, adminPass);
-          await refresh();
-          await (onChanged?.());
-        } catch (err) {
-          alert(String(err?.message || err || "Error"));
-          select.value = e.rank || "";
-        }
-      });
-
-      const dInput = tr.querySelector(".emp-discord-input");
-      dInput.value = getEmployeeDiscord(full);
-      dInput.addEventListener("change", async () => {
-        if (needUnlock()) {
-          dInput.value = getEmployeeDiscord(full);
-          return;
-        }
-        const id = parseDiscordId(dInput.value);
-        if (id === null) {
-          alert("Eso no parece un ID de Discord. Es un número de 17 a 20 cifras (clic derecho sobre la persona → Copiar ID de usuario).");
-          dInput.value = getEmployeeDiscord(full);
-          return;
-        }
-        setEmployeeDiscord(full, id, (ok) => !ok && renderList());
-        dInput.value = id;
-        await (onChanged?.());
-      });
-
-      const iInput = tr.querySelector(".emp-iban-input");
-      iInput.value = getEmployeeIban(full);
-      iInput.addEventListener("change", async () => {
-        if (needUnlock()) {
-          iInput.value = getEmployeeIban(full);
-          return;
-        }
-        const iban = parseIban(iInput.value);
-        if (iban === null) {
-          alert("El IBAN no es válido. Es una letra y 6 números, como J739745 (sale en el banco, en Informaciones).");
-          iInput.value = getEmployeeIban(full);
-          return;
-        }
-        setEmployeeIban(full, iban, (ok) => !ok && renderList());
-        iInput.value = iban;
-        await (onChanged?.());
-      });
-
-      const npInput = tr.querySelector(".emp-nopay-input");
-      npInput.checked = isEmployeeNoPay(full);
-      if (cloudOn() && !AUTH.tribal) {
-        npInput.disabled = true;
-        npInput.title = "Solo el Jefe Tribal cambia No cobra";
+  // Desplegable de rangos con su %. Con la nube, Jefe y Jefe Tribal solo para el Jefe Tribal.
+  function fillRankSelect(select, current) {
+    select.textContent = "";
+    select.disabled = false;
+    select.appendChild(new Option("Sin rango", ""));
+    for (const r of RANKS.slice().reverse()) {
+      const opt = new Option(`${r.label} (${pctText(r.pct)})`, r.label);
+      if (cloudOn() && !AUTH.tribal && isHigh(r.label) && r.label !== current) {
+        opt.disabled = true;
+        opt.textContent += " · solo Jefe Tribal";
       }
-      npInput.addEventListener("change", async () => {
-        if (needUnlock()) {
-          npInput.checked = isEmployeeNoPay(full);
-          return;
-        }
-        setEmployeeNoPay(full, npInput.checked, (ok) => !ok && renderList());
-        await (onChanged?.());
-      });
+      select.appendChild(opt);
+    }
+    if (current && !pctForRank(current)) select.appendChild(new Option(`${current} (sin %)`, current));
+    select.value = current || "";
+  }
+  fillRankSelect(rankInput, "");
 
-      tr.querySelector("button[data-del]").addEventListener("click", async () => {
-        if (needUnlock()) return;
-        if (cloudOn() && !AUTH.tribal && HIGH_RANKS.includes(e.rank)) {
-          alert("Solo el Jefe Tribal puede despedir a un Jefe.");
-          return;
-        }
-        if (cloudOn() && AUTH.discordId && getEmployeeDiscord(full) === AUTH.discordId) {
-          alert("No puedes despedirte a ti mismo: perderías el acceso a la página.");
-          return;
-        }
-        const reason = await askFireReason(e);
-        if (!reason) return;
-        try {
-          await fireEmployee(e, reason, adminPass);
-          await refresh();
-          await (onChanged?.());
-        } catch (err) {
-          alert(String(err?.message || err || "Error"));
-        }
+  function avatar(e, big = false) {
+    return rankAvatar(e.rank, empInitials(e), `emp-av${big ? " big" : ""}`);
+  }
+  function badge(rank) {
+    return mk("span", `pg-badge ${empRankCls(rank)}`, rank || "Sin rango");
+  }
+  function strikeChip(n) {
+    return mk("span", "pg-strike emp-st" + (n >= STRIKE_MAX ? " max" : "") + (n ? "" : " zero"), `${n >= STRIKE_MAX ? "🚫 " : n ? "⚠️ " : ""}${n}/${STRIKE_MAX}`);
+  }
+
+  // ---------- Pestañas y modo ----------
+  function setTab(t) {
+    tab = t;
+    modal.querySelectorAll(".emp-tab").forEach((b) => b.classList.toggle("is-on", b.dataset.empTab === t));
+    modal.querySelectorAll(".emp-pane").forEach((p) => (p.hidden = p.dataset.empPane !== t));
+    renderAll();
+  }
+  modal.querySelectorAll(".emp-tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.empTab)));
+  byId("emp-sort")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-sort]");
+    if (!b) return;
+    sortBy = b.dataset.sort;
+    byId("emp-sort").querySelectorAll("[data-sort]").forEach((x) => x.classList.toggle("is-on", x === b));
+    renderList();
+  });
+
+  const uploadBtn = byId("emp-cloud-upload");
+  function applyMode() {
+    const on = cloudOn();
+    const lock = byId("emp-lock");
+    if (lock) lock.hidden = on || unlocked;
+    const note = byId("emp-cloud-note");
+    if (note) {
+      if (on) {
+        note.textContent = isJefe()
+          ? `☁️ En línea · ${employees.length} en plantilla · sesión de ${AUTH.tribal ? "Jefe Tribal" : "Jefe"}${AUTH.tribal ? "" : " (solo lectura: das de alta y readmites rangos bajos; lo demás, el Jefe Tribal)"}`
+          : "Solo los Jefes ven la plantilla.";
+      } else {
+        note.textContent = unlocked ? "🔓 Desbloqueado en este equipo" : "🔒 Programa de escritorio: desbloquea con la contraseña para cambiar algo.";
+      }
+    }
+    if (uploadBtn) uploadBtn.hidden = !(on && isJefe() && loadEmployeesLocal().length);
+    byId("emp-tab-new").hidden = !canAdd() && cloudOn();
+    byId("emp-tab-fired").hidden = !hasAccess();
+  }
+
+  // ---------- Listado ----------
+  const FILTERS = [
+    { k: "all", label: "En plantilla", test: () => true },
+    { k: "strikes", label: "Con strikes", test: (e) => strikesOf(e) > 0, cls: "w", cloud: true },
+    { k: "fire", label: `Para despido (${STRIKE_MAX}/${STRIKE_MAX})`, test: (e) => strikesOf(e) >= STRIKE_MAX, cls: "r", cloud: true },
+    { k: "iban", label: "Sin IBAN", test: (e) => !getEmployeeIban(fullName(e)) && !isEmployeeNoPay(fullName(e)), cls: "w" },
+    { k: "discord", label: "Sin Discord", test: (e) => !getEmployeeDiscord(fullName(e)), cls: "w" },
+  ];
+
+  function shownList() {
+    const q = normalizeKeySimple(searchInput.value || "");
+    const f = FILTERS.find((x) => x.k === filter) || FILTERS[0];
+    let out = employees.filter((e) => f.test(e) && (!q || normalizeKeySimple(`${e.name} ${e.surname} ${e.rank || ""}`).includes(q)));
+    if (sortBy === "az") out = out.slice().sort((x, y) => fullName(x).localeCompare(fullName(y), "es", { sensitivity: "base" }));
+    else if (sortBy === "strikes") out = out.slice().sort((x, y) => strikesOf(y) - strikesOf(x) || byRankThenName(x, y));
+    return out;
+  }
+
+  function renderKpis() {
+    const box = byId("emp-kpis");
+    box.textContent = "";
+    for (const f of FILTERS) {
+      if (f.cloud && !cloudOn()) continue;
+      const n = employees.filter(f.test).length;
+      const k = mk("button", `emp-kpi${f.cls && n ? " " + f.cls : ""}${filter === f.k ? " is-on" : ""}`);
+      k.type = "button";
+      k.append(mk("b", "", String(n)), mk("span", "", f.label));
+      k.addEventListener("click", () => {
+        filter = filter === f.k ? "all" : f.k;
+        renderList();
       });
+      box.appendChild(k);
     }
   }
 
-  // ---------- Ventana "Despedir" (motivo) ----------
+  function renderCounts() {
+    byId("emp-tab-n-list").textContent = String(employees.length);
+    const sN = cloudOn() ? employees.filter((e) => strikesOf(e) > 0).length : 0;
+    byId("emp-tab-n-strikes").textContent = sN ? String(sN) : "";
+  }
+
+  function renderList() {
+    renderCounts();
+    const listView = byId("emp-list-view");
+    const fichaView = byId("emp-ficha-view");
+    const inFicha = fichaId && employees.some((e) => String(e.id) === fichaId);
+    listView.hidden = !!inFicha;
+    fichaView.hidden = !inFicha;
+    modal.classList.toggle("emp-in-ficha", !!inFicha);
+    if (inFicha) return renderFicha();
+    fichaId = null;
+    renderKpis();
+    const list = byId("emp-list");
+    list.textContent = "";
+    const shown = shownList();
+    if (!shown.length) list.appendChild(mk("p", "muted emp-empty", employees.length ? "Nadie con ese filtro." : "Todavía no hay empleados. Añádelos en «Nuevo empleado»."));
+    for (const e of shown) {
+      const full = fullName(e);
+      const row = mk("button", "emp-row");
+      row.type = "button";
+      const nm = mk("div", "emp-row-name");
+      nm.append(mk("b", "", full), mk("small", "", `${e.rank || "Sin rango"} · ${pctOf(e)}`));
+      const flags = mk("div", "emp-row-flags");
+      const disc = getEmployeeDiscord(full);
+      const iban = getEmployeeIban(full);
+      flags.append(
+        mk("span", disc ? "emp-ok" : "emp-no", disc ? "✔ Discord" : "⚠ Sin Discord"),
+        isEmployeeNoPay(full) ? mk("span", "emp-mut", "No cobra") : mk("span", iban ? "emp-ok" : "emp-no", iban ? "✔ IBAN" : "⚠ Sin IBAN")
+      );
+      row.append(avatar(e), nm, badge(e.rank));
+      if (cloudOn() && !isOwnerRank(e.rank)) row.append(strikeChip(strikesOf(e)));
+      else row.append(mk("span", ""));
+      row.append(flags, mk("span", "emp-go", "›"));
+      row.addEventListener("click", () => openFicha(e.id));
+      list.appendChild(row);
+    }
+  }
+
+  // Al abrir una ficha (o pasar a otra) se empieza arriba del todo.
+  const toTop = () => {
+    const card = modal.querySelector(".emp-card");
+    if (card) card.scrollTop = 0;
+    const f = modal.querySelector(".emp-ficha");
+    if (f) f.scrollTop = 0;
+  };
+  function openFicha(id) {
+    fichaId = String(id);
+    editing = false;
+    if (tab !== "list") setTab("list");
+    else renderList();
+    toTop();
+  }
+
+  // ---------- Ficha ----------
+  function box(title, cls = "") {
+    const b = mk("div", "emp-box " + cls);
+    b.appendChild(mk("h6", "", title));
+    return b;
+  }
+  function kv(k, v, cls = "") {
+    const r = mk("div", "emp-kv");
+    r.append(mk("span", "", k), mk("b", cls, v));
+    return r;
+  }
+
+  function renderFicha() {
+    const view = byId("emp-ficha-view");
+    const e = employees.find((x) => String(x.id) === fichaId);
+    if (!e) return;
+    const full = fullName(e);
+    const n = strikesOf(e);
+    view.textContent = "";
+
+    // Barra: volver y anterior / siguiente (dentro del filtro actual)
+    const nav = mk("div", "emp-nav");
+    const back = btn("← Listado", "emp-back");
+    back.addEventListener("click", () => {
+      fichaId = null;
+      editing = false;
+      renderList();
+      toTop();
+    });
+    nav.appendChild(back);
+    const seq = shownList();
+    const i = seq.findIndex((x) => String(x.id) === fichaId);
+    const go = (d) => {
+      const t = seq[i + d];
+      if (!t) return;
+      fichaId = String(t.id);
+      editing = false;
+      renderList();
+      toTop();
+    };
+    const pn = mk("div", "emp-prevnext");
+    const prev = btn(seq[i - 1] ? `‹ ${fullName(seq[i - 1])}` : "‹", "emp-back");
+    prev.disabled = !seq[i - 1];
+    prev.addEventListener("click", () => go(-1));
+    const next = btn(seq[i + 1] ? `${fullName(seq[i + 1])} ›` : "›", "emp-back");
+    next.disabled = !seq[i + 1];
+    next.addEventListener("click", () => go(1));
+    pn.append(prev, next);
+    nav.appendChild(pn);
+    view.appendChild(nav);
+
+    const card = mk("div", "emp-ficha");
+    // Cabecera
+    const head = mk("div", "emp-fh");
+    head.appendChild(avatar(e, true));
+    const who = mk("div", "emp-fh-who");
+    who.appendChild(mk("b", "", full));
+    const line = mk("div", "emp-fh-line");
+    line.appendChild(badge(e.rank));
+    if (cloudOn() && n) line.appendChild(strikeChip(n));
+    const alta = cloudRow(e)?.altaAt || "";
+    const since = alta || (STRIKE_HIST.slice().reverse().find((w) => strikeRowIn(w, e.id, full))?.semana ?? "");
+    if (since) line.appendChild(mk("span", "muted", `· en el negocio desde ${new Date(String(since).length === 10 ? `${since}T12:00:00` : since).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" })}${alta ? "" : " (primera semana cerrada)"}`));
+    who.appendChild(line);
+    head.appendChild(who);
+    if (canEdit()) {
+      const acts = mk("div", "emp-fh-acts");
+      const edit = btn(editing ? "Cancelar" : "✏️ Editar datos");
+      edit.addEventListener("click", () => {
+        editing = !editing;
+        renderFicha();
+      });
+      acts.appendChild(edit);
+      if (!isOwnerRank(e.rank) && !isSelf(e)) {
+        const fire = btn("Despedir", "danger");
+        fire.addEventListener("click", () => fireEmp(e));
+        acts.appendChild(fire);
+      }
+      head.appendChild(acts);
+    }
+    card.appendChild(head);
+
+    // Datos
+    const datos = box("Datos", "emp-datos");
+    const disc = getEmployeeDiscord(full);
+    const iban = getEmployeeIban(full);
+    const noPay = isEmployeeNoPay(full);
+    if (editing) datos.appendChild(editForm(e));
+    else {
+      datos.append(
+        kv("Discord", disc || "⚠ Falta", disc ? "" : "emp-no"),
+        kv("IBAN", noPay ? "No cobra" : iban || "⚠ Falta", iban || noPay ? "" : "emp-no"),
+        kv("Comisión", pctOf(e)),
+        kv("Cobra nómina", noPay ? "No" : "Sí")
+      );
+    }
+    card.appendChild(datos);
+
+    // Rango
+    const rango = box("Rango", "emp-rango");
+    const li = EMP_LADDER.findIndex((x) => normalizeKeySimple(x) === normalizeKeySimple(e.rank || ""));
+    if (isOwnerRank(e.rank)) rango.appendChild(mk("p", "muted emp-small", "Jefe Tribal: el rango del dueño (100 %). No entra en la escalera ni lleva strikes."));
+    else if (li < 0) rango.appendChild(mk("p", "muted emp-small", e.rank ? `${e.rank}: rango fuera de la escalera (lo cambias en «Editar datos»).` : "Sin rango: ponle uno en «Editar datos»."));
+    else {
+      const ladder = mk("div", "emp-ladder");
+      EMP_LADDER.forEach((r, k) => {
+        if (k) ladder.appendChild(mk("span", "emp-ladder-sep", "›"));
+        ladder.appendChild(mk("span", `pg-badge ${empRankCls(r)}${k === li ? " cur" : ""}`, r));
+      });
+      rango.appendChild(ladder);
+    }
+    const gross = PAGOS_WEEK_GROSS ? PAGOS_WEEK_GROSS.get(normalizeKeySimple(full)) || 0 : null;
+    if (!isOwnerRank(e.rank)) {
+      if (gross != null) rango.appendChild(kv("Esta semana", `${fmtMoney(gross)} facturados · mínimo ${fmtMoney(WEEK_MIN)} ${gross >= WEEK_MIN ? "✔" : "✖"}`, gross >= WEEK_MIN ? "emp-ok" : "emp-no"));
+      else rango.appendChild(mk("p", "muted emp-small", "Procesa la semana en Pagos para ver lo que lleva facturado."));
+    }
+    if (canEdit() && li >= 0 && !isSelf(e)) {
+      const ra = mk("div", "emp-acts");
+      if (EMP_LADDER[li + 1]) {
+        const up = btn(`⬆️ Subir a ${EMP_LADDER[li + 1]}`);
+        up.addEventListener("click", () => moveRank(e, EMP_LADDER[li + 1], up));
+        ra.appendChild(up);
+      }
+      if (li > 0) {
+        const down = btn(`⬇️ Bajar a ${EMP_LADDER[li - 1]}`);
+        down.addEventListener("click", () => moveRank(e, EMP_LADDER[li - 1], down));
+        ra.appendChild(down);
+      }
+      rango.appendChild(ra);
+    }
+    card.appendChild(rango);
+
+    // Facturacion de las ultimas semanas cerradas (+ la actual si Pagos la tiene)
+    const fac = box("Facturación · últimas semanas", "emp-fac");
+    const pts = [];
+    for (const w of STRIKE_HIST) {
+      const r = strikeRowIn(w, e.id, full);
+      if (r) pts.push({ label: dm(w.semana), v: Number(r.gross || 0) });
+      if (pts.length >= 6) break;
+    }
+    pts.reverse();
+    if (gross != null) pts.push({ label: "Esta", v: gross, now: true });
+    if (!pts.length) fac.appendChild(mk("p", "muted emp-small", cloudOn() ? "Todavía no hay semanas cerradas con esta persona." : "La gráfica necesita las semanas cerradas de la nube (en la web)."));
+    else {
+      const max = Math.max(WEEK_MIN * 1.25, ...pts.map((p) => p.v));
+      const chart = mk("div", "emp-chart");
+      const minLine = mk("div", "emp-chart-min");
+      minLine.style.bottom = `${(WEEK_MIN / max) * 100}%`;
+      minLine.title = `Mínimo ${fmtMoney(WEEK_MIN)}`;
+      chart.appendChild(minLine);
+      const labels = mk("div", "emp-chart-x");
+      for (const p of pts) {
+        const c = mk("div", "emp-col" + (p.v < WEEK_MIN ? " lo" : "") + (p.now ? " now" : ""));
+        c.style.height = `${Math.max(2, (p.v / max) * 100)}%`;
+        c.title = `${p.label}: ${fmtMoney(p.v)}`;
+        c.appendChild(mk("em", "", p.v >= 1000 ? `${Math.round(p.v / 1000)}k` : String(p.v)));
+        chart.appendChild(c);
+        labels.appendChild(mk("span", "", p.label));
+      }
+      fac.append(chart, labels);
+      const closed = pts.filter((p) => !p.now);
+      if (closed.length) {
+        const avg = Math.round(closed.reduce((a, p) => a + p.v, 0) / closed.length);
+        const best = Math.max(...closed.map((p) => p.v));
+        fac.appendChild(mk("p", "muted emp-small", `Media: ${fmtMoney(avg)} · Mejor semana: ${fmtMoney(best)} · Línea = mínimo ${fmtMoney(WEEK_MIN)}`));
+      }
+    }
+    card.appendChild(fac);
+
+    // Strikes
+    if (!isOwnerRank(e.rank)) {
+      const st = box(cloudOn() ? `Strikes · ${n >= STRIKE_MAX ? "🚫" : "⚠️"} ${n}/${STRIKE_MAX}` : "Strikes", "emp-strk");
+      if (!cloudOn()) st.appendChild(mk("p", "muted emp-small", "Los strikes semana a semana necesitan la nube (en la web)."));
+      else if (boss()) st.appendChild(buildStrikeEditor(e, () => renderAll()));
+      else {
+        const hist = strikeHistoryOf(e.id, full);
+        const weeks = mk("div", "strike-ed-weeks");
+        if (!hist.length) weeks.appendChild(mk("span", "muted emp-small", "Sin semanas cerradas."));
+        for (const h of hist.slice(0, 6)) {
+          const w = mk("span", "strike-week ro" + (h.on ? " on" : "") + (h.forgiven ? " off" : "") + (h.counted ? " counted" : ""));
+          w.append(mk("b", "", dm(h.wk)), mk("span", "", h.on ? `⚠️ ${h.motivo || "strike"}` : h.forgiven ? "Quitado" : `✅ ${fmtMoney(h.gross)}`));
+          weeks.appendChild(w);
+        }
+        st.appendChild(weeks);
+      }
+      card.appendChild(st);
+    }
+
+    // Historial
+    const hb = box("Historial", "emp-hist");
+    const tl = mk("div", "emp-tl");
+    tl.appendChild(mk("p", "muted emp-small", "Cargando…"));
+    hb.appendChild(tl);
+    card.appendChild(hb);
+    view.appendChild(card);
+    loadHistory(e, tl);
+  }
+
+  async function loadHistory(e, tl) {
+    const id = String(e.id);
+    let rows = [];
+    let err = "";
+    if (!cloudOn()) err = "El historial necesita la nube (se ve en la web con la sesión de Discord).";
+    else {
+      try {
+        rows = (await empHistory(id)) || [];
+      } catch (x) {
+        err = x.code === "PGRST205" || x.code === "42P01" || x.status === 404
+          ? "Falta pegar en Supabase el SQL 7_historial_empleados.sql para guardar el historial."
+          : `No se pudo cargar: ${x.message || x}`;
+      }
+    }
+    if (fichaId !== id) return; // se cambio de ficha mientras cargaba
+    tl.textContent = "";
+    if (err) return tl.appendChild(mk("p", "muted emp-small", err));
+    if (!rows.length) return tl.appendChild(mk("p", "muted emp-small", "Sin movimientos todavía. Desde ahora se apuntan aquí los ascensos, descensos, strikes, cambios de datos, despidos y readmisiones."));
+    for (const r of rows) {
+      const it = mk("div", "emp-tl-row");
+      const d = r.at ? new Date(r.at) : null;
+      it.append(mk("em", "", d ? d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "2-digit" }) : ""), mk("span", "", r.texto || ""));
+      if (r.por) it.appendChild(mk("small", "muted", `· ${r.por}`));
+      tl.appendChild(it);
+    }
+  }
+
+  function editForm(e) {
+    const full = fullName(e);
+    const f = mk("div", "emp-edit");
+    const field = (label, input) => {
+      const l = mk("label", "");
+      l.append(mk("span", "", label), input);
+      return l;
+    };
+    const inp = (v, ph, extra = {}) => {
+      const x = mk("input", "text-input");
+      x.type = "text";
+      x.value = v || "";
+      x.placeholder = ph;
+      Object.assign(x, extra);
+      return x;
+    };
+    const nIn = inp(e.name, "Nombre");
+    const sIn = inp(e.surname, "Apellido");
+    const rSel = mk("select", "text-input");
+    fillRankSelect(rSel, e.rank || "");
+    const dIn = inp(getEmployeeDiscord(full), "ID de Discord", { inputMode: "numeric" });
+    const iIn = inp(getEmployeeIban(full), "J000000", { maxLength: 9 });
+    const np = mk("input");
+    np.type = "checkbox";
+    np.checked = isEmployeeNoPay(full);
+    const npL = mk("label", "emp-check");
+    npL.append(np, mk("span", "", "No cobra la nómina"));
+    const grid = mk("div", "emp-edit-grid");
+    grid.append(field("Nombre", nIn), field("Apellido", sIn), field("Rango", rSel), field("IBAN", iIn), field("ID de Discord", dIn));
+    const save = btn("Guardar", "primary");
+    const cancel = btn("Cancelar");
+    cancel.addEventListener("click", () => {
+      editing = false;
+      renderFicha();
+    });
+    save.addEventListener("click", async () => {
+      const name = nIn.value.trim().replace(/\s+/g, " ");
+      const surname = sIn.value.trim().replace(/\s+/g, " ");
+      if (!name || !surname) return alert("Pon Nombre y Apellido.");
+      const discord = parseDiscordId(dIn.value);
+      if (discord === null) return alert("Eso no parece un ID de Discord. Es un número de 17 a 20 cifras (clic derecho sobre la persona → Copiar ID de usuario).");
+      const ib = parseIban(iIn.value);
+      if (ib === null) return alert("El IBAN no es válido. Es una letra y 6 números, como J739745.");
+      const newFull = `${name} ${surname}`;
+      if (newFull !== full) {
+        const clash = [...employees, ...listFired()].find((x) => String(x.id) !== String(e.id) && normalizeKeySimple(fullName(x)) === normalizeKeySimple(newFull));
+        if (clash) return alert(`Ya hay alguien llamado ${fullName(clash)}${clash.firedAt ? " (en Despedidos)" : ""}.`);
+        if (!confirm(`¿Cambiar el nombre de ${full} a ${newFull}?\n\nConserva su rango, Discord, IBAN y strikes. Las ventas nuevas deben salir en Discord con el nombre nuevo.`)) return;
+      }
+      if (isSelf(e) && rSel.value !== (e.rank || "") && !confirm("Vas a cambiar tu propio rango. Si dejas de ser Jefe Tribal perderás estos permisos. ¿Seguir?")) return;
+      save.disabled = true;
+      try {
+        if (cloudOn()) {
+          await empCloudPatch(e.id, { name, surname, rank: rSel.value, discord, iban: ib, no_pay: np.checked });
+        } else {
+          await updateEmployee(e.id, { name, surname, rank: rSel.value }, adminPass);
+          if (newFull !== full) {
+            setEmployeeDiscord(full, "");
+            setEmployeeIban(full, "");
+            setEmployeeNoPay(full, false);
+          }
+          setEmployeeDiscord(newFull, discord);
+          setEmployeeIban(newFull, ib);
+          setEmployeeNoPay(newFull, np.checked);
+        }
+        editing = false;
+        setStatus(`✔ Datos de ${newFull} guardados.`, true);
+        await refresh();
+        // Sin la nube el programa puede cambiar el id al guardar: se busca por nombre.
+        if (!employees.some((x) => String(x.id) === fichaId)) {
+          const again = employees.find((x) => normalizeKeySimple(fullName(x)) === normalizeKeySimple(newFull));
+          if (again) {
+            fichaId = String(again.id);
+            renderList();
+          }
+        }
+        await (onChanged?.());
+      } catch (err) {
+        save.disabled = false;
+        alert(`No se pudo guardar: ${err.message || err}`);
+      }
+    });
+    const acts = mk("div", "emp-acts");
+    acts.append(save, cancel);
+    f.append(grid, npL, acts);
+    return f;
+  }
+
+  async function moveRank(e, to, b) {
+    const up = rankOrder(to) > rankOrder(e.rank);
+    if (!confirm(`¿${up ? "Subir" : "Bajar"} a ${fullName(e)} de ${e.rank} a ${to}?`)) return;
+    b.disabled = true;
+    try {
+      await updateEmployee(e.id, { rank: to }, adminPass);
+      setStatus(`✔ ${fullName(e)} ahora es ${to}.`, true);
+      const name = fullName(e);
+      await refresh();
+      if (!employees.some((x) => String(x.id) === fichaId)) {
+        const again = employees.find((x) => normalizeKeySimple(fullName(x)) === normalizeKeySimple(name));
+        if (again) {
+          fichaId = String(again.id);
+          renderList();
+        }
+      }
+      await (onChanged?.());
+    } catch (err) {
+      b.disabled = false;
+      alert(`No se pudo cambiar el rango: ${err.message || err}`);
+    }
+  }
+
+  // ---------- Despedir (ventana con motivo) ----------
   const fireDlg = byId("fire-dlg");
   function askFireReason(e) {
     return new Promise((resolve) => {
       const full = fullName(e);
-      const strikes = cloudOn() ? strikesBefore(e.id, full) : 0;
+      const strikes = strikesOf(e);
       byId("fire-name").textContent = full;
       byId("fire-rank").textContent = e.rank || "Sin rango";
       byId("fire-strikes").textContent = strikes ? `${strikes >= STRIKE_MAX ? "🚫" : "⚠️"} ${strikes}/${STRIKE_MAX} strikes seguidos` : "";
@@ -3626,47 +4383,183 @@ function setupEmployeesAdminModal({ onChanged }) {
     byId("fire-ok").disabled = !byId("fire-reason").value;
   });
 
-  // ---------- Registro de despidos ----------
-  const fmtFiredAt = (iso) => {
-    if (!iso) return "-";
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? "-" : d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
-  };
-  function renderFired() {
-    const box = byId("emp-fired-box");
-    const fbody = byId("emp-fired-body");
-    if (!box || !fbody) return;
-    const list = listFired();
-    byId("emp-fired-count").textContent = String(list.length);
-    fbody.innerHTML = "";
-    if (!list.length) {
-      fbody.innerHTML = '<tr><td colspan="5" class="muted">Nadie ha sido despedido todavía.</td></tr>';
-      return;
+  async function fireEmp(e) {
+    const label = fullName(e);
+    if (!canEdit()) return alert(cloudOn() ? "Solo el Jefe Tribal puede despedir." : "Primero desbloquea con la contraseña.");
+    if (isOwnerRank(e.rank) || isSelf(e)) return alert("No puedes despedirte a ti mismo ni al Jefe Tribal: perderías el acceso a la página.");
+    const reason = await askFireReason(e);
+    if (!reason) return;
+    try {
+      await fireEmployee(e, reason, adminPass);
+      fichaId = null;
+      setStatus(`🚪 ${label} pasa a Despedidos.`, true);
+      await refresh();
+      await (onChanged?.());
+    } catch (err) {
+      alert(`No se pudo despedir: ${err.message || err}`);
     }
-    for (const f of list) {
-      const full = fullName(f);
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(full)}</td>
-        <td>${escapeHtml(f.rank || "-")}</td>
-        <td>${fmtFiredAt(f.firedAt)}</td>
-        <td>${escapeHtml(f.firedReason || "-")}${f.firedBy ? `<br><small class="muted">por ${escapeHtml(f.firedBy)}</small>` : ""}</td>
-        <td class="num"><button type="button" class="ghost small" data-readmit="1">Readmitir</button></td>`;
-      tr.querySelector("button[data-readmit]").addEventListener("click", () => readmit(f));
-      fbody.appendChild(tr);
+  }
+
+  // ---------- Pestaña Strikes ----------
+  function renderStrikesTab() {
+    const root = byId("emp-strikes");
+    root.textContent = "";
+    if (!cloudOn()) return root.appendChild(mk("p", "muted emp-empty", "Los strikes de semanas cerradas necesitan la nube: se ven en la web con la sesión de Discord. Los de la semana en curso salen en Pagos."));
+    if (!isJefe()) return root.appendChild(mk("p", "muted emp-empty", "Solo los Jefes ven los strikes."));
+    const rows = employees.map((e) => ({ e, n: strikesOf(e), hist: strikeHistoryOf(e.id, fullName(e)) })).filter((x) => x.n > 0);
+    const run = async (b, fn) => {
+      b.disabled = true;
+      try {
+        await fn();
+        renderAll();
+      } catch (err) {
+        b.disabled = false;
+        alert(`No se pudo guardar: ${err.message || err}`);
+      }
+    };
+    const plus = (e, b, motivo) => {
+      const w = strikePlusWeek(e);
+      if (!w) return alert("No hay semanas cerradas donde ponerle el strike.");
+      const m = motivo ?? prompt(`Poner un strike a ${fullName(e)} (semana del ${dm(w.wk)}).\n\nMotivo:`, "");
+      if (m === null) return;
+      if (!String(m).trim()) return alert("Escribe el motivo del strike.");
+      run(b, () => saveStrikeAdjMany([{ wk: w.wk, value: strikeValueFor(w, true, String(m).trim()) }], e.id, fullName(e)));
+    };
+    const minus = (e, b) => {
+      const w = strikeMinusWeek(e);
+      if (!w) return;
+      const m = prompt(`Quitar a ${fullName(e)} el strike de la semana del ${dm(w.wk)}.\n\nMotivo (opcional):`, "");
+      if (m === null) return;
+      run(b, () => saveStrikeAdjMany([{ wk: w.wk, value: strikeValueFor(w, false, m.trim() || "quitado por el Jefe Tribal") }], e.id, fullName(e)));
+    };
+    const group = (title, items) => {
+      root.appendChild(mk("div", "emp-grp", title));
+      for (const { e, n, hist } of items) {
+        const r = mk("div", "emp-srow");
+        const nm = mk("button", "emp-srow-name");
+        nm.type = "button";
+        nm.title = "Abrir ficha";
+        nm.append(mk("b", "", fullName(e)), mk("small", "", e.rank || "Sin rango"));
+        nm.addEventListener("click", () => openFicha(e.id));
+        const dots = mk("div", "emp-dots");
+        for (const h of hist.slice(0, 4)) dots.appendChild(mk("i", h.counted || h.on ? "s" : h.forgiven ? "f" : "", ""));
+        dots.title = "Últimas semanas cerradas (rojo = strike, punteado = quitado)";
+        const why = mk("span", "muted emp-small emp-why", hist.filter((h) => h.counted).map((h) => `${dm(h.wk)} ${h.motivo || "strike"}`).join(" · "));
+        r.append(avatar(e), nm, strikeChip(n), dots, why);
+        const acts = mk("div", "emp-acts");
+        if (boss()) {
+          if (n < STRIKE_MAX) {
+            const p = btn("＋1", "ghost", "Poner un strike");
+            p.addEventListener("click", () => plus(e, p));
+            acts.appendChild(p);
+          }
+          const m = btn("−1", "ghost", "Quitar el último strike");
+          m.addEventListener("click", () => minus(e, m));
+          acts.appendChild(m);
+          if (n >= STRIKE_MAX && !isOwnerRank(e.rank) && !isSelf(e)) {
+            const f = btn("Despedir", "danger");
+            f.addEventListener("click", () => fireEmp(e));
+            acts.appendChild(f);
+          }
+        }
+        r.appendChild(acts);
+        root.appendChild(r);
+      }
+    };
+    const fire = rows.filter((x) => x.n >= STRIKE_MAX).sort((a, b) => byRankThenName(a.e, b.e));
+    const rest = rows.filter((x) => x.n < STRIKE_MAX).sort((a, b) => b.n - a.n || byRankThenName(a.e, b.e));
+    if (!rows.length) root.appendChild(mk("p", "muted emp-empty", "👏 Nadie tiene strikes ahora mismo."));
+    if (fire.length) group("🚫 Para despido", fire);
+    if (rest.length) group("⚠️ Con strikes", rest);
+    if (boss()) {
+      root.appendChild(mk("div", "emp-grp", "➕ Poner strike"));
+      const add = mk("div", "emp-sadd");
+      const sel = mk("select", "text-input");
+      sel.appendChild(new Option("Elige empleado…", ""));
+      for (const e of employees) if (!isEmployeeNoPay(fullName(e)) && !isOwnerRank(e.rank) && strikesOf(e) < STRIKE_MAX) sel.appendChild(new Option(`${fullName(e)}${e.rank ? ` (${e.rank})` : ""}`, String(e.id)));
+      const why = mk("input", "text-input");
+      why.placeholder = "Motivo (p. ej. mal comportamiento)";
+      why.maxLength = 120;
+      const go = btn("➕ Poner strike", "");
+      go.addEventListener("click", () => {
+        const e = employees.find((x) => String(x.id) === sel.value);
+        if (!e) return alert("Elige a quién ponerle el strike.");
+        plus(e, go, why.value);
+      });
+      add.append(sel, why, go);
+      root.appendChild(add);
+    }
+    root.appendChild(mk("p", "muted emp-note", "Aquí salen los strikes de las semanas ya cerradas. Los de la semana en curso se ven en Pagos, porque dependen de lo que se venda hasta el sábado. Un strike quitado no suma ni corta la racha."));
+  }
+
+  // ---------- Pestaña Rangos ----------
+  function renderRanksTab() {
+    const t = byId("emp-rank-table");
+    t.textContent = "";
+    for (const r of RANKS.slice().reverse()) {
+      const people = employees.filter((e) => normalizeKeySimple(e.rank || "") === normalizeKeySimple(r.label));
+      const row = mk("div", "emp-rk");
+      const lab = mk("div", "emp-rk-lab");
+      lab.append(rankAvatar(r.label, "?", "emp-av sm"), mk("span", `pg-badge ${empRankCls(r.label)}`, r.label));
+      row.append(lab, mk("span", "emp-rk-pct", `${Math.round(r.pct * 100)} %`), mk("span", "emp-rk-n", people.length ? people.map(fullName).join(", ") : "—"));
+      t.appendChild(row);
+    }
+    t.appendChild(mk("p", "muted emp-note", `Mínimo semanal para no llevar strike: ${fmtMoney(WEEK_MIN)} (facturas pagadas + rascas). Bono del empleado de la semana: ${fmtMoney(WEEK_BONUS)}. ${STRIKE_MAX} strikes seguidos = despido. El Jefe Tribal no lleva strikes ni compite por el bono. Los ascensos no son automáticos: se dan desde la ficha.`));
+  }
+
+  // ---------- Pestaña Despedidos ----------
+  function renderFired() {
+    const list = byId("emp-fired-list");
+    const fired = listFired();
+    byId("emp-fired-n").textContent = fired.length ? String(fired.length) : "";
+    if (tab !== "fired") return;
+    list.textContent = "";
+    if (!fired.length) list.appendChild(mk("p", "muted emp-empty", "No hay nadie en el registro de despedidos."));
+    for (const f of fired) {
+      const row = mk("div", "emp-fired-row");
+      const when = f.firedAt ? new Date(f.firedAt).toLocaleString("es-ES", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+      const info = mk("div", "emp-fired-info");
+      const head = mk("div", "");
+      head.append(mk("b", "", fullName(f)));
+      if (f.rank) head.append(` · ${f.rank}`);
+      info.append(head, mk("div", "muted", `🚪 ${when}${f.firedBy ? ` · por ${f.firedBy}` : ""}`));
+      if (f.firedReason) info.append(mk("div", "emp-fired-why", `Motivo: ${f.firedReason}`));
+      const acts = mk("div", "emp-acts");
+      const back = btn("Readmitir");
+      if (cloudOn() && isHigh(f.rank) && !AUTH.tribal) {
+        back.disabled = true;
+        back.title = "Solo el Jefe Tribal puede readmitir a un Jefe";
+      }
+      back.addEventListener("click", () => readmit(f));
+      acts.append(back);
+      if (cloudOn() ? AUTH.tribal : unlocked) {
+        const del = btn("Borrar registro", "danger", "Borra a esta persona por completo (solo para errores o duplicados)");
+        del.addEventListener("click", async () => {
+          if (!confirm(`¿Borrar por completo a ${fullName(f)} del registro? No se puede deshacer.`)) return;
+          try {
+            if (cloudOn()) await empCloudDelete(f.id);
+            else saveFiredLocal(loadFiredLocal().filter((x) => x.id !== f.id));
+            await refresh();
+          } catch (err) {
+            alert(String(err?.message || err || "Error"));
+          }
+        });
+        acts.append(del);
+      }
+      row.append(rankAvatar(f.rank, empInitials(f), "emp-av"), info, acts);
+      list.appendChild(row);
     }
   }
 
   async function readmit(f) {
-    if (needUnlock()) return;
+    if (!canAdd()) return alert(cloudOn() ? "Solo los Jefes pueden readmitir." : "Primero desbloquea con la contraseña.");
     const full = fullName(f);
-    if (employees.some((e) => normalizeKeySimple(fullName(e)) === normalizeKeySimple(full))) {
-      alert(`${full} ya está en la plantilla.`);
-      return;
-    }
-    if (!confirm(`¿Readmitir a ${full}${f.rank ? ` como ${f.rank}` : ""}? Sale de Despedidos y vuelve a la plantilla.`)) return;
+    if (employees.some((e) => normalizeKeySimple(fullName(e)) === normalizeKeySimple(full))) return alert(`${full} ya está en la plantilla.`);
+    if (cloudOn() && isHigh(f.rank) && !AUTH.tribal) return alert("Solo el Jefe Tribal puede readmitir a un Jefe.");
+    if (!confirm(`¿Readmitir a ${full}${f.rank ? ` como ${f.rank}` : ""}? Sale de Despedidos y vuelve a la plantilla con su Discord e IBAN.`)) return;
     try {
       await readmitEmployee(f, adminPass);
+      setStatus(`↩️ ${full} vuelve a la plantilla.`, true);
       await refresh();
       await (onChanged?.());
     } catch (err) {
@@ -3674,37 +4567,42 @@ function setupEmployeesAdminModal({ onChanged }) {
     }
   }
 
+  function renderAll() {
+    applyMode();
+    if (tab === "new" && byId("emp-tab-new").hidden) tab = "list";
+    if (tab === "list") renderList();
+    else renderCounts();
+    if (tab === "strikes") renderStrikesTab();
+    if (tab === "ranks") renderRanksTab();
+    renderFired();
+  }
+
   async function refresh() {
     try {
+      if (cloudOn() && isJefe()) await loadStrikeHist();
       employees = await listEmployees();
-      employees.sort((a, b) =>
-        `${a.surname} ${a.name}`.localeCompare(`${b.surname} ${b.name}`, "es", { sensitivity: "base" })
-      );
-      renderList();
-      renderFired();
+      employees.sort(byRankThenName);
+      renderAll();
     } catch {
       alert("No se pudieron cargar los empleados.");
     }
   }
 
+  // ---------- Desbloquear (programa de escritorio) ----------
   async function tryUnlock() {
     const p = String(passInput.value || "");
-    if (!p) {
-      setStatus("Escribe la contraseña.");
-      return;
-    }
+    if (!p) return setStatus("Escribe la contraseña.");
     if (!(await verifyPassword("empleados", p))) {
       unlocked = false;
       adminPass = "";
-      setStatus("Contraseña incorrecta.");
-      return;
+      return setStatus("Contraseña incorrecta.");
     }
     unlocked = true;
     adminPass = p;
     passInput.value = "";
-    setStatus("Desbloqueado", true);
+    setStatus("🔓 Desbloqueado", true);
+    renderAll();
   }
-
   byId("emp-admin-unlock").addEventListener("click", tryUnlock);
   passInput.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter") {
@@ -3713,33 +4611,24 @@ function setupEmployeesAdminModal({ onChanged }) {
     }
   });
 
+  // ---------- Nuevo empleado ----------
   const addBtn = byId("emp-new-add");
   addBtn.addEventListener("click", async () => {
     if (addBtn.disabled) return;
-    const name = String(nameInput.value || "").trim();
-    const surname = String(surInput.value || "").trim();
+    const name = String(nameInput.value || "").trim().replace(/\s+/g, " ");
+    const surname = String(surInput.value || "").trim().replace(/\s+/g, " ");
     const rank = String(rankInput.value || "").trim();
     const discord = parseDiscordId(discordInput.value);
     const iban = parseIban(ibanInput.value);
-
-    if (!name || !surname) {
-      alert("Pon Nombre y Apellido.");
-      return;
-    }
-    if (discord === null) {
-      alert("El ID de Discord no es válido. Es un número de 17 a 20 cifras (o déjalo vacío).");
-      return;
-    }
-    if (iban === null) {
-      alert("El IBAN no es válido. Es una letra y 6 números, como J739745 (o déjalo vacío).");
-      return;
-    }
-    if (needUnlock()) return;
+    if (!name || !surname) return alert("Pon Nombre y Apellido.");
+    if (discord === null) return alert("El ID de Discord no es válido. Es un número de 17 a 20 cifras (o déjalo vacío).");
+    if (iban === null) return alert("El IBAN no es válido. Es una letra y 6 números, como J739745 (o déjalo vacío).");
+    if (!canAdd()) return alert(cloudOn() ? "Solo los Jefes pueden dar de alta." : "Primero desbloquea con la contraseña.");
+    if (cloudOn() && isHigh(rank) && !AUTH.tribal) return alert(`Solo el Jefe Tribal puede dar el rango ${rank}.`);
+    if (employees.some((e) => normalizeKeySimple(fullName(e)) === normalizeKeySimple(`${name} ${surname}`))) return alert(`${name} ${surname} ya está en la plantilla.`);
     const prevFired = findFired(`${name} ${surname}`);
     if (prevFired) {
-      if (confirm(`${fullName(prevFired)} está en Despedidos (${fmtFiredAt(prevFired.firedAt)} · ${prevFired.firedReason || "sin motivo"}).\n\n¿Readmitirlo en vez de añadirlo de nuevo?`)) {
-        await readmit(prevFired);
-      }
+      if (confirm(`${fullName(prevFired)} está en Despedidos${prevFired.firedReason ? ` (${prevFired.firedReason})` : ""}.\n\n¿Readmitirlo en vez de añadirlo de nuevo? Así conserva su historial.`)) await readmit(prevFired);
       return;
     }
     addBtn.disabled = true; // evita guardar dos veces mientras se guarda
@@ -3753,6 +4642,7 @@ function setupEmployeesAdminModal({ onChanged }) {
       rankInput.value = "";
       discordInput.value = "";
       ibanInput.value = "";
+      setStatus(`➕ ${full} añadido a la plantilla.`, true);
       await refresh();
       await (onChanged?.());
     } catch (err) {
@@ -3765,29 +4655,6 @@ function setupEmployeesAdminModal({ onChanged }) {
   byId("emp-refresh").addEventListener("click", refresh);
   searchInput.addEventListener("input", renderList);
 
-  // Con la nube: sin contrasena (manda la sesion de Discord) y boton para
-  // subir los empleados guardados en este navegador.
-  const accessBlock = passInput.closest(".admin-block");
-  const uploadBtn = byId("emp-cloud-upload");
-  function syncCloudUi() {
-    const on = cloudOn();
-    if (accessBlock) accessBlock.hidden = on;
-    const note = byId("emp-cloud-note");
-    if (note) {
-      note.hidden = !on;
-      note.textContent = on
-        ? `☁️ Plantilla en línea · sesión de ${AUTH.tribal ? "Jefe Tribal" : "Jefe"}. ${AUTH.tribal ? "" : "Los rangos Jefe y Jefe Tribal y la casilla No cobra solo los cambia el Jefe Tribal. "}El Discord de cada uno es con el que inicia sesión.`
-        : "";
-    }
-    if (uploadBtn) uploadBtn.hidden = !(on && isJefe() && loadEmployeesLocal().length);
-  }
-  document.addEventListener("badu-auth", () => {
-    syncCloudUi();
-    // El desplegable de "Nuevo empleado" se lleno antes de saber quien entra:
-    // se rehace con los permisos de la sesion (Jefe Tribal = todos los rangos).
-    fillRankSelect(rankInput, rankInput.value);
-    refresh();
-  });
   uploadBtn?.addEventListener("click", async () => {
     if (!confirm("¿Subir a la nube los empleados guardados en este navegador? Los que ya estén en línea (mismo nombre) no se duplican.")) return;
     uploadBtn.disabled = true;
@@ -3802,18 +4669,29 @@ function setupEmployeesAdminModal({ onChanged }) {
       uploadBtn.disabled = false;
     }
   });
-  syncCloudUi();
 
-  // Al cerrar la ventana se vuelve a bloquear.
+  document.addEventListener("badu-auth", () => {
+    // El desplegable de "Nuevo empleado" se lleno antes de saber quien entra.
+    fillRankSelect(rankInput, rankInput.value);
+    refresh();
+  });
+
+  // Al cerrar la ventana se vuelve a bloquear (programa de escritorio) y a la lista.
   modal.addEventListener("close", () => {
     unlocked = false;
     adminPass = "";
     passInput.value = "";
-    setStatus("Bloqueado");
+    fichaId = null;
+    editing = false;
+    setStatus("");
   });
 
   modal.addEventListener("badu-open", () => {
-    syncCloudUi();
+    // Siempre se abre en el Listado.
+    tab = "list";
+    modal.querySelectorAll(".emp-tab").forEach((b) => b.classList.toggle("is-on", b.dataset.empTab === "list"));
+    modal.querySelectorAll(".emp-pane").forEach((p) => (p.hidden = p.dataset.empPane !== "list"));
+    fillRankSelect(rankInput, rankInput.value);
     refresh();
   });
 

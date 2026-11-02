@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=25" />
+  <link rel="stylesheet" href="styles.css?v=26" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -460,7 +460,7 @@
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
-    <footer class="app-version">Versión 25 · Avisos de la Caja</footer>
+    <footer class="app-version">Versión 26 · Gestión de empleados nueva</footer>
   </main>
   </div>
 
@@ -575,26 +575,50 @@
   </dialog>
 
 
-  <dialog id="employees-admin-modal">
-    <form method="dialog" class="modal-card">
-      <header class="modal-head">
-        <h3>Gestión de empleados</h3>
-        <button value="cancel" class="ghost">Cerrar</button>
+  <dialog id="employees-admin-modal" class="emp-modal">
+    <form method="dialog" class="modal-card emp-card" onsubmit="return false">
+      <header class="modal-head emp-head">
+        <h3>👥 Empleados</h3>
+        <span class="muted emp-cloud-note" id="emp-cloud-note"></span>
+        <button type="button" class="small" id="emp-cloud-upload" hidden>☁️ Subir empleados de este navegador</button>
+        <button type="button" class="ghost" onclick="this.closest('dialog').close()">Cerrar</button>
       </header>
 
-      <section class="admin-grid">
-        <div class="admin-block">
-          <h4>Acceso</h4>
-          <div class="form-row">
-            <label for="emp-admin-pass">Contraseña</label>
-            <input id="emp-admin-pass" class="text-input" type="password" placeholder="••••••••" autocomplete="current-password" />
-            <button type="button" class="primary" id="emp-admin-unlock">Desbloquear</button>
-          </div>
-          <p class="muted" id="emp-admin-status">Bloqueado</p>
-        </div>
+      <div class="emp-lock" id="emp-lock" hidden>
+        <label for="emp-admin-pass">🔒 Contraseña de empleados</label>
+        <input id="emp-admin-pass" class="text-input" type="password" placeholder="••••••••" autocomplete="current-password" />
+        <button type="button" class="primary" id="emp-admin-unlock">Desbloquear</button>
+      </div>
 
-        <div class="admin-block">
-          <h4>Nuevo empleado</h4>
+      <nav class="emp-tabs" id="emp-tabs" role="tablist">
+        <button type="button" class="emp-tab is-on" data-emp-tab="list">📋 Listado <span class="emp-tab-n" id="emp-tab-n-list"></span></button>
+        <button type="button" class="emp-tab" data-emp-tab="new" id="emp-tab-new">➕ Nuevo empleado</button>
+        <button type="button" class="emp-tab" data-emp-tab="strikes">⚠️ Strikes <span class="emp-tab-n r" id="emp-tab-n-strikes"></span></button>
+        <button type="button" class="emp-tab" data-emp-tab="ranks">🏷️ Rangos</button>
+        <button type="button" class="emp-tab" data-emp-tab="fired" id="emp-tab-fired">🚪 Despedidos <span class="emp-tab-n" id="emp-fired-n"></span></button>
+      </nav>
+
+      <!-- Listado + ficha -->
+      <section class="emp-pane" data-emp-pane="list">
+        <div id="emp-list-view">
+          <div class="emp-kpis" id="emp-kpis"></div>
+          <div class="emp-bar">
+            <input id="emp-search" class="text-input" type="text" placeholder="🔍 Buscar por nombre o rango…" />
+            <div class="emp-sort" id="emp-sort">
+              <button type="button" class="emp-chip is-on" data-sort="rank">Por rango</button>
+              <button type="button" class="emp-chip" data-sort="az">A–Z</button>
+              <button type="button" class="emp-chip" data-sort="strikes">Más strikes</button>
+            </div>
+            <button type="button" id="emp-refresh" class="ghost" title="Volver a cargar">↻</button>
+          </div>
+          <div class="emp-list" id="emp-list"></div>
+        </div>
+        <div id="emp-ficha-view" hidden></div>
+      </section>
+
+      <!-- Nuevo empleado -->
+      <section class="emp-pane" data-emp-pane="new" hidden>
+        <div class="admin-block emp-new-block">
           <div class="form-grid">
             <input id="emp-new-name" class="text-input" type="text" placeholder="Nombre" />
             <input id="emp-new-surname" class="text-input" type="text" placeholder="Apellido" />
@@ -605,51 +629,27 @@
           <div class="actions">
             <button type="button" class="primary" id="emp-new-add">Añadir</button>
           </div>
-          <p class="muted" id="emp-new-hint">Usa el mismo nombre y apellido que sale en Discord (Emitida por / Cobrador / Vendedor). Con el ID de Discord se le etiqueta al copiar los pagos, y con el IBAN sale su cuenta para la nómina.</p>
+          <p class="muted" id="emp-new-hint">Usa el mismo nombre y apellido que sale en Discord (Emitida por / Cobrador / Vendedor). Con el ID de Discord se le etiqueta al copiar los pagos y puede iniciar sesión; con el IBAN sale su cuenta para la nómina. Con la nube, los rangos Jefe y Jefe Tribal solo los da el Jefe Tribal.</p>
         </div>
       </section>
 
-      <p class="muted emp-cloud-note" id="emp-cloud-note" hidden></p>
-      <h4 class="emp-list-title">Empleados <button type="button" class="small" id="emp-cloud-upload" hidden>☁️ Subir empleados de este navegador a la nube</button></h4>
-      <div class="form-row">
-        <input id="emp-search" class="text-input" type="text" placeholder="Buscar por nombre, apellido o rango..." />
-        <button type="button" id="emp-refresh">Actualizar</button>
-      </div>
+      <!-- Strikes -->
+      <section class="emp-pane" data-emp-pane="strikes" hidden>
+        <div id="emp-strikes"></div>
+      </section>
 
-      <div class="table-wrap emp-table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Empleado</th>
-              <th>Rango</th>
-              <th class="num">% de Comisión según Rango</th>
-              <th>Discord</th>
-              <th>IBAN</th>
-              <th class="center">No cobra</th>
-              <th class="num">Acciones</th>
-            </tr>
-          </thead>
-          <tbody id="emp-admin-body"></tbody>
-        </table>
-      </div>
+      <!-- Rangos -->
+      <section class="emp-pane" data-emp-pane="ranks" hidden>
+        <div class="emp-rank-table" id="emp-rank-table"></div>
+      </section>
 
-      <details class="emp-fired" id="emp-fired-box">
-        <summary>Despedidos (<span id="emp-fired-count">0</span>) · registro</summary>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Empleado</th>
-                <th>Rango</th>
-                <th>Fecha</th>
-                <th>Motivo</th>
-                <th class="num">Acciones</th>
-              </tr>
-            </thead>
-            <tbody id="emp-fired-body"></tbody>
-          </table>
-        </div>
-      </details>
+      <!-- Despedidos -->
+      <section class="emp-pane" data-emp-pane="fired" hidden>
+        <p class="muted emp-fired-intro">Registro de despidos: no cuentan en Pagos ni pueden entrar en la página. «Readmitir» les devuelve su rango, Discord e IBAN.</p>
+        <div id="emp-fired-list" class="emp-fired-list"></div>
+      </section>
+
+      <p class="muted emp-status" id="emp-admin-status" role="status"></p>
     </form>
   </dialog>
 
@@ -751,6 +751,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=25"></script>
+  <script src="app.js?v=26"></script>
 </body>
 </html>
