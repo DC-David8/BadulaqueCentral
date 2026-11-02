@@ -80,7 +80,7 @@ Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado �
 - **Listado:** recuadros arriba que también filtran (En plantilla, Con strikes, Para despido 3/3, Sin IBAN, Sin Discord), buscador y orden Por rango / A–Z / Más strikes. Cada fila: avatar del rango, nombre, rango y %, strikes y ✔/⚠ de Discord e IBAN (o «No cobra»). Al tocar una fila se abre su ficha.
 - **Ficha:** «← Listado» y anterior / siguiente; cabecera con avatar grande, rango, strikes y «en el negocio desde» (fecha de alta o, si falta, su primera semana cerrada); **Datos** con «✏️ Editar datos» (nombre, apellido, rango, Discord, IBAN, No cobra) y **Despedir**; **Rango** con la escalera (Reponedor → Cajero → Cajero Principal → Supervisor → Gerente), lo vendido esta semana frente al mínimo y **Subir a… / Bajar a…**; gráfica de las últimas 6 semanas cerradas (más la actual si Pagos la tiene cargada) con la línea del mínimo, media y mejor semana; **Strikes** semana a semana con ＋1, −1, Quitar todos y clic en una semana para ponerlo o quitarlo; **Historial**.
 - **Strikes:** solo los que tienen, separados en «Para despido» y «Con strikes», con cuadritos de las últimas semanas (rojo = strike, punteado = quitado), motivos, ＋1 / −1 / Despedir y el formulario «Poner strike» con motivo. Los de la semana en curso se ven en Pagos (allí el Jefe Tribal también los quita con ✕, los vuelve a poner con ↺ o pone uno a mano).
-- **Rangos:** tabla con la comisión y quién está en cada rango.
+- **Rangos:** tabla con la comisión y quién está en cada rango, y arriba **📣 Anuncio de ascensos y descensos**: junta los cambios de rango desde la fecha que elijas (con la nube salen del historial), deja quitar a alguien y **Copiar para Discord** da el anuncio con cada persona y su rango nuevo etiquetados. Si alguien sube y vuelve a bajar en ese tiempo, no sale.
 - **Despedidos:** el registro con Readmitir (y Borrar registro solo para el Jefe Tribal).
 - Un strike quitado no suma ni corta la racha. Los ajustes se guardan en línea (`app_settings`, clave `strike_adj`) y cuentan en Pagos, Totales empleados y Copiar para Discord.
 - Todo cambio (alta, rango, nombre, Discord, IBAN, No cobra, strikes, despido, readmisión) se apunta solo en el historial (tabla `emp_historial`, SQL `supabase/7_historial_empleados.sql`). Si la tabla aún no existe, la ficha lo avisa y la página sigue funcionando.
@@ -259,6 +259,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 30 · 1 de noviembre de 2026 · Anuncio de ascensos
+- Gestión de empleados → Rangos: anuncio de ascensos y descensos listo para pegar en Discord, con la persona y el rol de su rango nuevo etiquetados y el aviso a Trabajadores.
 
 ### Versión 29 · 1 de noviembre de 2026 · Iconos en Pagos
 - Iconos en Copiar para Discord, Totales empleados, Gestión de empleados, Cerrar semana y Reabrir.

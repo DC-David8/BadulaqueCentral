@@ -510,6 +510,100 @@ function fullName(e) {
 // Rol de Discord del empleado de la semana (quien mas cobra).
 const EMPLOYEE_OF_WEEK_TAG = "<@&1364707155130712195>";
 
+// Roles de Discord de cada rango (para el anuncio de ascensos y descensos).
+// Vacio = sale el nombre del rango en negrita en vez de etiquetar.
+const RANK_ROLE_IDS = {
+  Reponedor: "1364613906915655763",
+  Cajero: "",
+  "Cajero Principal": "1364613906915655764",
+  Supervisor: "1364613906915655768",
+  Gerente: "1366562494260318322",
+  "Jefe Tribal": "1364613906915655770",
+};
+const ROLE_TAG_JEFATURA = "<@&1556057218133262336>";
+const ROLE_TAG_TRABAJADORES = "<@&1563907257073143919>";
+function rankRoleTag(rank) {
+  const r = canonRank(rank);
+  const id = RANK_ROLE_IDS[r];
+  return id ? `<@&${id}>` : `**${r || "sin rango"}**`;
+}
+
+// ---------------------------------------------------------------------------
+// Ascensos y descensos para anunciar. Con la nube salen del historial
+// (emp_historial, tipo "rango"); sin ella, de un registro en este equipo.
+// ---------------------------------------------------------------------------
+const RANK_LOG_KEY = "badu_rank_log_v1";
+function rankLogLocal(e, from, to) {
+  try {
+    const list = JSON.parse(localStorage.getItem(RANK_LOG_KEY) || "[]");
+    list.push({ id: String(e.id ?? ""), name: fullName(e), from: from || "", to: to || "", at: new Date().toISOString() });
+    localStorage.setItem(RANK_LOG_KEY, JSON.stringify(list.slice(-300)));
+  } catch {
+    // sin almacenamiento
+  }
+}
+
+async function rankChangesSince(sinceIso) {
+  if (!cloudOn()) {
+    let list = [];
+    try {
+      list = JSON.parse(localStorage.getItem(RANK_LOG_KEY) || "[]");
+    } catch {
+      list = [];
+    }
+    return list.filter((x) => String(x.at) >= sinceIso).map((x) => ({ ...x, from: canonRank(x.from), to: canonRank(x.to) }));
+  }
+  const rows = await cloud.req(`/rest/v1/emp_historial?select=employee_id,at,texto&tipo=eq.rango&at=gte.${encodeURIComponent(sinceIso)}&order=at.asc&limit=500`);
+  const out = [];
+  for (const r of rows || []) {
+    const m = String(r.texto || "").match(/(?:Ascendido|Bajado) de (.+?) a (.+)$/);
+    if (!m) continue;
+    const e = EMP_CLOUD.list.find((x) => String(x.id) === String(r.employee_id));
+    if (!e || e.firedAt) continue;
+    const from = /^sin rango$/i.test(m[1]) ? "" : canonRank(m[1]);
+    const to = /^sin rango$/i.test(m[2]) ? "" : canonRank(m[2]);
+    out.push({ id: e.id, name: fullName(e), from, to, at: r.at });
+  }
+  return out;
+}
+
+// Un cambio por persona: del primer rango al ultimo (si vuelve al mismo, no sale).
+function netRankChanges(list) {
+  const by = new Map();
+  for (const c of list) {
+    const k = c.id || normalizeKeySimple(c.name);
+    const prev = by.get(k);
+    by.set(k, prev ? { ...prev, name: c.name, to: c.to, at: c.at } : { ...c });
+  }
+  return [...by.values()]
+    .filter((c) => c.from !== c.to)
+    .map((c) => ({ ...c, up: rankOrder(c.to) > rankOrder(c.from) }))
+    .sort((a, b) => rankOrder(b.to) - rankOrder(a.to) || a.name.localeCompare(b.name, "es"));
+}
+
+function rankAnnouncementText(changes) {
+  const who = (c) => {
+    const d = getEmployeeDiscord(c.name);
+    return d ? `<@${d}>` : `**${c.name}**`;
+  };
+  const ups = changes.filter((c) => c.up);
+  const downs = changes.filter((c) => !c.up);
+  const lines = ["# 📣 Ascensos y descensos", "-# Badulaque Central 🦅🍎", ""];
+  if (ups.length) {
+    lines.push("## ⬆️ Ascensos");
+    for (const c of ups) lines.push(`> 🎉 ${who(c)} asciende a ${rankRoleTag(c.to)}${c.from ? ` *(antes ${c.from})*` : ""}`);
+    lines.push("");
+  }
+  if (downs.length) {
+    lines.push("## ⬇️ Descensos");
+    for (const c of downs) lines.push(`> ${who(c)} pasa a ${rankRoleTag(c.to)}${c.from ? ` *(antes ${c.from})*` : ""}`);
+    lines.push("");
+  }
+  lines.push(ups.length ? "-# ¡Enhorabuena a los ascendidos y a seguir dándolo todo! 💪" : "-# ¡A seguir dándolo todo! 💪");
+  lines.push(ROLE_TAG_TRABAJADORES);
+  return lines.join("\n");
+}
+
 // ===================== Reglas de la semana =====================
 // Minimo semanal (facturas pagadas + rascas): quien cobra y no llega se lleva
 // un strike. Los strikes se acumulan semana a semana (semanas cerradas en
@@ -4311,6 +4405,7 @@ function setupEmployeesAdminModal({ onChanged }) {
           await empCloudPatch(e.id, { name, surname, rank: rSel.value, discord, iban: ib, no_pay: np.checked });
         } else {
           await updateEmployee(e.id, { name, surname, rank: rSel.value }, adminPass);
+          if ((e.rank || "") !== rSel.value) rankLogLocal({ id: e.id, name, surname }, e.rank, rSel.value);
           if (newFull !== full) {
             setEmployeeDiscord(full, "");
             setEmployeeIban(full, "");
@@ -4349,6 +4444,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     b.disabled = true;
     try {
       await updateEmployee(e.id, { rank: to }, adminPass);
+      if (!cloudOn()) rankLogLocal(e, e.rank, to);
       setStatus(`✔ ${fullName(e)} ahora es ${to}.`, true);
       const name = fullName(e);
       await refresh();
@@ -4507,9 +4603,83 @@ function setupEmployeesAdminModal({ onChanged }) {
   }
 
   // ---------- Pestaña Rangos ----------
+  // ---------- Anuncio de ascensos y descensos ----------
+  let annSince = "";
+  let annToken = 0;
+  function renderAnnounce(root) {
+    const boxEl = mk("div", "emp-ann");
+    boxEl.appendChild(mk("h4", "", "📣 Anuncio de ascensos y descensos"));
+    const bar = mk("div", "emp-ann-bar");
+    const lab = mk("label", "");
+    lab.appendChild(mk("span", "", "Desde"));
+    const date = mk("input", "text-input");
+    date.type = "date";
+    if (!annSince) {
+      const d = new Date(Date.now() - 7 * 86400000);
+      annSince = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+    date.value = annSince;
+    lab.appendChild(date);
+    const copy = btn("📋 Copiar para Discord", "primary");
+    copy.disabled = true;
+    bar.append(lab, copy);
+    const list = mk("div", "emp-ann-list");
+    list.appendChild(mk("p", "muted emp-small", "Buscando cambios de rango…"));
+    boxEl.append(bar, list);
+    root.appendChild(boxEl);
+    let current = [];
+    const load = async () => {
+      const tok = ++annToken;
+      list.textContent = "";
+      list.appendChild(mk("p", "muted emp-small", "Buscando cambios de rango…"));
+      copy.disabled = true;
+      let changes = [];
+      let err = "";
+      try {
+        changes = netRankChanges(await rankChangesSince(new Date(`${annSince}T00:00:00`).toISOString()));
+      } catch (x) {
+        err = x.code === "PGRST205" || x.code === "42P01" || x.status === 404 ? "Falta pegar en Supabase el SQL 7_historial_empleados.sql: los ascensos salen del historial." : `No se pudieron cargar: ${x.message || x}`;
+      }
+      if (tok !== annToken) return;
+      list.textContent = "";
+      if (err) return list.appendChild(mk("p", "muted emp-small", err));
+      if (!changes.length) return list.appendChild(mk("p", "muted emp-small", "No hay ascensos ni descensos desde esa fecha. Se apuntan solos al usar «Subir a… / Bajar a…» o al cambiar el rango en la ficha."));
+      current = changes.map((c) => ({ ...c, on: true }));
+      for (const c of current) {
+        const row = mk("label", "emp-ann-row");
+        const ck = mk("input");
+        ck.type = "checkbox";
+        ck.checked = true;
+        ck.addEventListener("change", () => {
+          c.on = ck.checked;
+          copy.disabled = !current.some((x) => x.on);
+        });
+        row.append(ck, mk("span", c.up ? "emp-ok" : "emp-no", c.up ? "⬆️" : "⬇️"), mk("b", "", c.name), mk("span", "muted", `${c.from || "sin rango"} → `), mk("span", `pg-badge ${empRankCls(c.to)}`, c.to || "Sin rango"));
+        if (!getEmployeeDiscord(c.name)) row.appendChild(mk("small", "emp-no", "sin Discord: saldrá su nombre"));
+        list.appendChild(row);
+      }
+      copy.disabled = false;
+    };
+    date.addEventListener("change", () => {
+      annSince = date.value || annSince;
+      load();
+    });
+    copy.addEventListener("click", async () => {
+      const sel = current.filter((c) => c.on);
+      if (!sel.length) return;
+      const text = rankAnnouncementText(sel);
+      const ok = await copyText(text);
+      if (!ok) openCopyFallback(text);
+      setStatus(ok ? `📋 Anuncio copiado (${sel.length} ${sel.length === 1 ? "cambio" : "cambios"}). Pégalo en Discord.` : "", true);
+    });
+    load();
+  }
+
   function renderRanksTab() {
     const t = byId("emp-rank-table");
     t.textContent = "";
+    if (hasAccess()) renderAnnounce(t);
+    t.appendChild(mk("h4", "emp-rk-title", "Rangos y plantilla"));
     for (const r of RANKS.slice().reverse()) {
       const people = employees.filter((e) => normalizeKeySimple(e.rank || "") === normalizeKeySimple(r.label));
       const row = mk("div", "emp-rk");

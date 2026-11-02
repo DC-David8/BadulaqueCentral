@@ -1095,3 +1095,15 @@ dialog.emp-modal { width: min(1180px, 96vw); }
   /* Ficha a pantalla completa: se esconden pestañas y aviso mientras se ve */
   .emp-modal.emp-in-ficha .emp-tabs, .emp-modal.emp-in-ficha .emp-cloud-note, .emp-modal.emp-in-ficha #emp-cloud-upload { display: none; }
 }
+
+/* Anuncio de ascensos y descensos (pestaña Rangos) */
+.emp-ann { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; margin-bottom: 14px; border-radius: 12px; border: 1px solid var(--accent-dark); background: var(--accent-bg); }
+.emp-ann h4, .emp-rk-title { margin: 0; font-size: 15px; }
+.emp-rk-title { margin: 4px 0 10px; }
+.emp-ann-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.emp-ann-bar label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); }
+.emp-ann-bar .text-input { width: auto; color-scheme: dark; }
+.emp-ann-bar button { height: 42px; }
+.emp-ann-list { display: flex; flex-direction: column; gap: 6px; }
+.emp-ann-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--key); font-size: 14px; cursor: pointer; }
+.emp-ann-row input { width: 17px; height: 17px; accent-color: var(--accent); }
