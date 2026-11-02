@@ -514,7 +514,7 @@ const EMPLOYEE_OF_WEEK_TAG = "<@&1364707155130712195>";
 // Vacio = sale el nombre del rango en negrita en vez de etiquetar.
 const RANK_ROLE_IDS = {
   Reponedor: "1364613906915655763",
-  Cajero: "",
+  Cajero: "1566682203524702218",
   "Cajero Principal": "1364613906915655764",
   Supervisor: "1364613906915655768",
   Gerente: "1366562494260318322",

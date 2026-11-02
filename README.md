@@ -260,6 +260,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 31 · 1 de noviembre de 2026 · Rol de Cajero
+- El anuncio de ascensos también etiqueta el rol de Cajero.
+
 ### Versión 30 · 1 de noviembre de 2026 · Anuncio de ascensos
 - Gestión de empleados → Rangos: anuncio de ascensos y descensos listo para pegar en Discord, con la persona y el rol de su rango nuevo etiquetados y el aviso a Trabajadores.
 
