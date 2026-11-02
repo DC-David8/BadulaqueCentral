@@ -306,11 +306,11 @@ async function listEmployees() {
     try {
       const data = await api.emp_list();
       const arr = Array.isArray(data) ? data : (Array.isArray(data?.employees) ? data.employees : []);
-      return arr;
+      return arr.map((e) => ({ ...e, rank: canonRank(e.rank) }));
     } catch {
     }
   }
-  return loadEmployeesLocal();
+  return loadEmployeesLocal().map((e) => ({ ...e, rank: canonRank(e.rank) }));
 }
 
 // El programa de escritorio (.exe) recibe su propia clave al guardar empleados.
@@ -392,7 +392,7 @@ function saveFiredLocal(list) {
 
 // Despedidos, el mas reciente primero: { id, name, surname, rank, firedAt, firedBy, firedReason }.
 function listFired() {
-  const list = cloudOn() ? EMP_CLOUD.list.filter((e) => e.firedAt) : loadFiredLocal();
+  const list = cloudOn() ? EMP_CLOUD.list.filter((e) => e.firedAt) : loadFiredLocal().map((e) => ({ ...e, rank: canonRank(e.rank) }));
   return [...list].sort((a, b) => String(b.firedAt).localeCompare(String(a.firedAt)));
 }
 
@@ -473,16 +473,30 @@ async function updateEmployee(id, payload, password) {
 // Rangos y comision (% de lo cobrado: facturas pagadas + rascas)
 // ============================================================================
 const RANKS = [
-  { label: "En Pruebas", pct: 0.35 },
+  { label: "Reponedor", pct: 0.35 },
   { label: "Cajero", pct: 0.40 },
-  { label: "Cajero Experimentado", pct: 0.45 },
-  { label: "Encargado", pct: 0.50 },
-  { label: "Jefe", pct: 0.50 },
+  { label: "Cajero Principal", pct: 0.45 },
+  { label: "Supervisor", pct: 0.50 },
+  { label: "Gerente", pct: 0.50 },
   { label: "Jefe Tribal", pct: 1.00 }, // solo el dueño
 ];
 
+// Nombres antiguos de los rangos (hasta la version 26). Si un empleado aun
+// los tiene guardados (en la nube o en el programa de escritorio), se leen
+// con el nombre nuevo.
+const RANK_ALIASES = {
+  "en pruebas": "Reponedor",
+  "cajero experimentado": "Cajero Principal",
+  encargado: "Supervisor",
+  jefe: "Gerente",
+};
+function canonRank(rank) {
+  const r = String(rank || "").trim();
+  return RANK_ALIASES[normalizeKeySimple(r)] || r;
+}
+
 function pctForRank(rank) {
-  const key = normalizeKeySimple(String(rank || ""));
+  const key = normalizeKeySimple(canonRank(rank));
   const found = RANKS.find((r) => normalizeKeySimple(r.label) === key);
   return found ? found.pct : 0;
 }
@@ -691,28 +705,28 @@ let PAGOS_WEEK_GROSS = null;
 // iniciales.
 // ---------------------------------------------------------------------------
 const EMP_RANK_CLS = {
-  "en pruebas": "r-pruebas",
+  reponedor: "r-pruebas",
   cajero: "r-cajero",
-  "cajero experimentado": "r-exp",
-  encargado: "r-encargado",
-  jefe: "r-jefe",
+  "cajero principal": "r-exp",
+  supervisor: "r-encargado",
+  gerente: "r-jefe",
   "jefe tribal": "r-tribal",
 };
 const empRankCls = (rank) => EMP_RANK_CLS[normalizeKeySimple(rank || "")] || "r-none";
 const empInitials = (e) => `${String(e.name || "").trim().charAt(0)}${String(e.surname || "").trim().charAt(0)}`.toUpperCase() || "?";
 const RANK_ICON_SVG = {
   // etiqueta de "nuevo"
-  "en pruebas": '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.6" fill="currentColor"/><path d="M11.5 11.5l3 3M14.5 11.5l-3 3"/>',
+  reponedor: '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.6" fill="currentColor"/><path d="M11.5 11.5l3 3M14.5 11.5l-3 3"/>',
   // caja registradora
   cajero: '<rect x="3" y="12" width="18" height="8.5" rx="1.5"/><path d="M5.5 12l1.2-5h10.6l1.2 5"/><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M3 16.5h18M10.5 18.5h3"/>',
   // cesta de la compra
-  "cajero experimentado": '<path d="M3 10h18"/><path d="M5 10l1.6 9a1.5 1.5 0 0 0 1.5 1.2h7.8a1.5 1.5 0 0 0 1.5-1.2L19 10"/><path d="M8.5 10L11 4M15.5 10L13 4"/><path d="M9.5 13.5v3.5M14.5 13.5v3.5M12 13.5v3.5"/>',
+  "cajero principal": '<path d="M3 10h18"/><path d="M5 10l1.6 9a1.5 1.5 0 0 0 1.5 1.2h7.8a1.5 1.5 0 0 0 1.5-1.2L19 10"/><path d="M8.5 10L11 4M15.5 10L13 4"/><path d="M9.5 13.5v3.5M14.5 13.5v3.5M12 13.5v3.5"/>',
   // portapapeles
-  encargado: '<rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3.5" rx="1"/><path d="M8.5 13.5l2.5 2.5 4.5-5"/>',
+  supervisor: '<rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3.5" rx="1"/><path d="M8.5 13.5l2.5 2.5 4.5-5"/>',
   // maletin
-  jefe: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12.5h18"/><rect x="10.5" y="11" width="3" height="3" rx=".6" fill="currentColor"/>',
+  gerente: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12.5h18"/><rect x="10.5" y="11" width="3" height="3" rx=".6" fill="currentColor"/>',
 };
-const RANK_STARS = { "en pruebas": 1, cajero: 2, "cajero experimentado": 3, encargado: 4, jefe: 5, "jefe tribal": 5 };
+const RANK_STARS = { reponedor: 1, cajero: 2, "cajero principal": 3, supervisor: 4, gerente: 5, "jefe tribal": 5 };
 const RANK_STAR_SVG = '<svg viewBox="0 0 10 10" aria-hidden="true"><polygon points="5,0.4 6.35,3.4 9.6,3.7 7.15,5.85 7.85,9.1 5,7.45 2.15,9.1 2.85,5.85 0.4,3.7 3.65,3.4" fill="currentColor"/></svg>';
 function rankAvatar(rank, fallbackText = "?", extraCls = "") {
   const key = normalizeKeySimple(rank || "");
@@ -742,7 +756,7 @@ function rankAvatar(rank, fallbackText = "?", extraCls = "") {
 }
 
 // Escalera para Subir / Bajar desde la ficha (el Jefe Tribal no entra: es solo del dueño).
-const EMP_LADDER = ["En Pruebas", "Cajero", "Cajero Experimentado", "Encargado", "Jefe"];
+const EMP_LADDER = ["Reponedor", "Cajero", "Cajero Principal", "Supervisor", "Gerente"];
 
 // Posicion del rango (mayor = mas arriba). Sin rango o desconocido: abajo del todo.
 function rankOrder(rank) {
@@ -750,7 +764,7 @@ function rankOrder(rank) {
   return RANKS.findIndex((r) => normalizeKeySimple(r.label) === key);
 }
 
-// Orden de la plantilla: Jefe Tribal arriba ... En Pruebas abajo; dentro del rango, por apellido.
+// Orden de la plantilla: Jefe Tribal arriba ... Reponedor abajo; dentro del rango, por apellido.
 function byRankThenName(a, b) {
   return (
     rankOrder(b.rank) - rankOrder(a.rank) ||
@@ -833,7 +847,7 @@ function setEmployeeNoPay(n, v, onDone) {
 // Nube (Supabase): inicio de sesion con Discord, empleados en linea y
 // permisos por rango. Igual que en Aguila Motors.
 // ----------------------------------------------------------------------------
-// Quien es Jefe lo decide la BASE DE DATOS (funcion es_jefe: rango Jefe o
+// Quien es Jefe lo decide la BASE DE DATOS (funcion es_jefe: rango Gerente o
 // Jefe Tribal con su ID de Discord en la plantilla), no la pagina: aunque
 // alguien toque el codigo, sin ser Jefe no recibe datos.
 // Mientras no haya URL y clave, o en el programa de escritorio, la pagina
@@ -843,7 +857,7 @@ function setEmployeeNoPay(n, v, onDone) {
 const BADU_CLOUD_URL = window.BADU_CLOUD_URL || "https://aewhpzwksxaqsuwsekcd.supabase.co";
 const BADU_CLOUD_KEY = window.BADU_CLOUD_KEY || "sb_publishable_sWiHTAwMYnw1hmTaCbLl5Q_4jMPZ0AB";
 const CLOUD_SESSION_KEY = "badu_cloud_session_v1";
-const HIGH_RANKS = ["Jefe", "Jefe Tribal"];
+const HIGH_RANKS = ["Gerente", "Jefe Tribal"];
 
 function cloudOn() {
   return !!(BADU_CLOUD_URL && BADU_CLOUD_KEY) && /^https?:$/.test(location.protocol);
@@ -1015,7 +1029,7 @@ async function authRefresh() {
     if (AUTH.role !== "invitado") {
       const rows = await cloud.rpc("mi_perfil");
       const r = Array.isArray(rows) ? rows[0] : rows;
-      if (r?.name) AUTH.profile = { name: String(r.name), surname: String(r.surname || ""), rank: String(r.rank || "") };
+      if (r?.name) AUTH.profile = { name: String(r.name), surname: String(r.surname || ""), rank: canonRank(r.rank) };
     }
   } catch (e) {
     AUTH.role = "invitado";
@@ -1039,7 +1053,7 @@ const empFromRow = (r) => ({
   id: String(r.id),
   name: String(r.name || "").trim(),
   surname: String(r.surname || "").trim(),
-  rank: String(r.rank || "").trim(),
+  rank: canonRank(r.rank),
   discord: String(r.discord || ""),
   iban: String(r.iban || ""),
   noPay: r.no_pay === true,
@@ -1087,7 +1101,7 @@ function empCloudFind(fullNameStr) {
 }
 
 function empCloudRequireJefe() {
-  if (!isJefe()) throw new Error("Solo los Jefes pueden cambiar la plantilla (inicia sesión con Discord).");
+  if (!isJefe()) throw new Error("Solo los Gerentes y el Jefe Tribal pueden cambiar la plantilla (inicia sesión con Discord).");
 }
 
 async function empCloudInsert(row) {
@@ -1196,7 +1210,7 @@ function renderAuthGate() {
   if (AUTH.role === "invitado") {
     msg.textContent =
       AUTH.error ||
-      `${AUTH.name ? AUTH.name + ", tu" : "Tu"} Discord no está en la plantilla del Badulaque. Pide a un Jefe que te añada con tu ID de Discord${AUTH.discordId ? ` (${AUTH.discordId})` : ""}.`;
+      `${AUTH.name ? AUTH.name + ", tu" : "Tu"} Discord no está en la plantilla del Badulaque. Pide a un Gerente que te añada con tu ID de Discord${AUTH.discordId ? ` (${AUTH.discordId})` : ""}.`;
     login.hidden = true;
     out.hidden = false;
   } else {
@@ -1214,7 +1228,7 @@ function renderAuthCard() {
   if (!show) return;
   const p = AUTH.profile;
   const name = p ? `${p.name} ${p.surname}`.trim() : AUTH.name || "Sesión iniciada";
-  const rank = AUTH.role === "offline" ? "Sin conexión" : p?.rank || (isJefe() ? "Jefe" : "Empleado");
+  const rank = AUTH.role === "offline" ? "Sin conexión" : p?.rank || (isJefe() ? "Gerente" : "Empleado");
   const img = byId("auth-avatar");
   if (AUTH.avatar) {
     img.src = AUTH.avatar;
@@ -1229,11 +1243,11 @@ function renderAuthCard() {
 }
 
 const RANK_BADGE_CLASS = {
-  "en pruebas": "r-pruebas",
+  reponedor: "r-pruebas",
   cajero: "r-cajero",
-  "cajero experimentado": "r-exp",
-  encargado: "r-encargado",
-  jefe: "r-jefe",
+  "cajero principal": "r-exp",
+  supervisor: "r-encargado",
+  gerente: "r-jefe",
   "jefe tribal": "r-tribal",
 };
 
@@ -2731,11 +2745,11 @@ function setupContabilidad() {
   };
 
   const RANK_BADGE = {
-    "en pruebas": "r-pruebas",
+    reponedor: "r-pruebas",
     cajero: "r-cajero",
-    "cajero experimentado": "r-exp",
-    encargado: "r-encargado",
-    jefe: "r-jefe",
+    "cajero principal": "r-exp",
+    supervisor: "r-encargado",
+    gerente: "r-jefe",
     "jefe tribal": "r-tribal",
   };
 
@@ -3859,7 +3873,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     status.style.color = ok ? "var(--ok)" : "var(--muted)";
   }
 
-  // Desplegable de rangos con su %. Con la nube, Jefe y Jefe Tribal solo para el Jefe Tribal.
+  // Desplegable de rangos con su %. Con la nube, Gerente y Jefe Tribal solo para el Jefe Tribal.
   function fillRankSelect(select, current) {
     select.textContent = "";
     select.disabled = false;
@@ -3912,8 +3926,8 @@ function setupEmployeesAdminModal({ onChanged }) {
     if (note) {
       if (on) {
         note.textContent = isJefe()
-          ? `☁️ En línea · ${employees.length} en plantilla · sesión de ${AUTH.tribal ? "Jefe Tribal" : "Jefe"}${AUTH.tribal ? "" : " (solo lectura: das de alta y readmites rangos bajos; lo demás, el Jefe Tribal)"}`
-          : "Solo los Jefes ven la plantilla.";
+          ? `☁️ En línea · ${employees.length} en plantilla · sesión de ${AUTH.tribal ? "Jefe Tribal" : "Gerente"}${AUTH.tribal ? "" : " (solo lectura: das de alta y readmites rangos bajos; lo demás, el Jefe Tribal)"}`
+          : "Solo los Gerentes y el Jefe Tribal ven la plantilla.";
       } else {
         note.textContent = unlocked ? "🔓 Desbloqueado en este equipo" : "🔒 Programa de escritorio: desbloquea con la contraseña para cambiar algo.";
       }
@@ -4405,7 +4419,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     const root = byId("emp-strikes");
     root.textContent = "";
     if (!cloudOn()) return root.appendChild(mk("p", "muted emp-empty", "Los strikes de semanas cerradas necesitan la nube: se ven en la web con la sesión de Discord. Los de la semana en curso salen en Pagos."));
-    if (!isJefe()) return root.appendChild(mk("p", "muted emp-empty", "Solo los Jefes ven los strikes."));
+    if (!isJefe()) return root.appendChild(mk("p", "muted emp-empty", "Solo los Gerentes y el Jefe Tribal ven los strikes."));
     const rows = employees.map((e) => ({ e, n: strikesOf(e), hist: strikeHistoryOf(e.id, fullName(e)) })).filter((x) => x.n > 0);
     const run = async (b, fn) => {
       b.disabled = true;
@@ -4528,7 +4542,7 @@ function setupEmployeesAdminModal({ onChanged }) {
       const back = btn("Readmitir");
       if (cloudOn() && isHigh(f.rank) && !AUTH.tribal) {
         back.disabled = true;
-        back.title = "Solo el Jefe Tribal puede readmitir a un Jefe";
+        back.title = "Solo el Jefe Tribal puede readmitir a un Gerente";
       }
       back.addEventListener("click", () => readmit(f));
       acts.append(back);
@@ -4552,10 +4566,10 @@ function setupEmployeesAdminModal({ onChanged }) {
   }
 
   async function readmit(f) {
-    if (!canAdd()) return alert(cloudOn() ? "Solo los Jefes pueden readmitir." : "Primero desbloquea con la contraseña.");
+    if (!canAdd()) return alert(cloudOn() ? "Solo los Gerentes y el Jefe Tribal pueden readmitir." : "Primero desbloquea con la contraseña.");
     const full = fullName(f);
     if (employees.some((e) => normalizeKeySimple(fullName(e)) === normalizeKeySimple(full))) return alert(`${full} ya está en la plantilla.`);
-    if (cloudOn() && isHigh(f.rank) && !AUTH.tribal) return alert("Solo el Jefe Tribal puede readmitir a un Jefe.");
+    if (cloudOn() && isHigh(f.rank) && !AUTH.tribal) return alert("Solo el Jefe Tribal puede readmitir a un Gerente.");
     if (!confirm(`¿Readmitir a ${full}${f.rank ? ` como ${f.rank}` : ""}? Sale de Despedidos y vuelve a la plantilla con su Discord e IBAN.`)) return;
     try {
       await readmitEmployee(f, adminPass);
@@ -4623,7 +4637,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     if (!name || !surname) return alert("Pon Nombre y Apellido.");
     if (discord === null) return alert("El ID de Discord no es válido. Es un número de 17 a 20 cifras (o déjalo vacío).");
     if (iban === null) return alert("El IBAN no es válido. Es una letra y 6 números, como J739745 (o déjalo vacío).");
-    if (!canAdd()) return alert(cloudOn() ? "Solo los Jefes pueden dar de alta." : "Primero desbloquea con la contraseña.");
+    if (!canAdd()) return alert(cloudOn() ? "Solo los Gerentes y el Jefe Tribal pueden dar de alta." : "Primero desbloquea con la contraseña.");
     if (cloudOn() && isHigh(rank) && !AUTH.tribal) return alert(`Solo el Jefe Tribal puede dar el rango ${rank}.`);
     if (employees.some((e) => normalizeKeySimple(fullName(e)) === normalizeKeySimple(`${name} ${surname}`))) return alert(`${name} ${surname} ya está en la plantilla.`);
     const prevFired = findFired(`${name} ${surname}`);

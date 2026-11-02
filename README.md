@@ -14,7 +14,7 @@ Funciona en el navegador (GitHub Pages) y también como programa de escritorio (
    - **Rasca y Gana**: ventas con vendedor, comprador, cantidad y total.
 
    Muestra tarjetas con lo **cobrado**, el **total a pagar**, las **rascas** y el **empleado de la semana**, y un **ranking** con una fila por persona: rango y %, barra de lo cobrado, IBAN, lo que hay que pagarle y avisos (*Sin IBAN*, *No cobra*, *Sin registrar*, *Sin rango*). **Copiar para Discord** copia la lista de pagos lista para pegar. Las tablas de siempre están en **Ver detalle**. **Exportar CSV** descarga `facturas_resultado.csv` y `ventas_rasca_y_gana.csv`.
-4. **Totales empleados** · Por cada empleado registrado: rango, %, facturas pagadas, rascas y **lo que hay que pagarle**, más el **total a pagar**. **Copiar todo** (igual que *Copiar para Discord*) genera una línea por persona: `* Ana Lopez (Encargado) <@ID>: 5.000 · IBAN J739745`, con `**IBAN pendiente**` si falta y el rol de empleado de la semana en quien más cobra. Quien no cobra va al final como *No cobra*. Doble clic en una fila copia lo que se le paga.
+4. **Totales empleados** · Por cada empleado registrado: rango, %, facturas pagadas, rascas y **lo que hay que pagarle**, más el **total a pagar**. **Copiar todo** (igual que *Copiar para Discord*) genera una línea por persona: `* Ana Lopez (Supervisor) <@ID>: 5.000 · IBAN J739745`, con `**IBAN pendiente**` si falta y el rol de empleado de la semana en quien más cobra. Quien no cobra va al final como *No cobra*. Doble clic en una fila copia lo que se le paga.
 5. **Gestión de empleados** · Igual que en Aguila Motors: tabla con **Empleado, Rango, % de Comisión según Rango, Discord, IBAN y No cobra**. El rango se elige en un desplegable (cambia el % al momento), el ID de Discord sirve para etiquetarle al copiar los pagos, el IBAN (una letra y 6 números, como `J739745`) sale en la nómina, y *No cobra* le saca del total a pagar. El nombre debe coincidir con el que sale en Discord (*Emitida por*, *Cobrador* o *Vendedor*). Discord, IBAN y No cobra se guardan en el navegador de cada equipo.
 6. **Crafteos / Suministros** · Pegas el log de crafteo (`Nombre crafteó 5x Cerveza`) y calcula los **suministros gastados** por empleado y por producto. Avisa de los productos sin coste asignado. **Exportar CSV** descarga `crafteos_suministros.csv`.
 
@@ -36,18 +36,18 @@ Los boletos salen **según el monto** (1 boleto cada $ 1.000, cambiable) o **1 p
 Igual que en Aguila Motors, la página puede usar una base de datos en **Supabase**. Mientras `BADU_CLOUD_URL` y `BADU_CLOUD_KEY` estén vacíos (`app.js`), todo funciona como antes, con contraseñas y datos en el navegador. Al rellenarlos:
 
 - **Sin sesión, o con un Discord que no está en la plantilla,** solo se ve el logo y **Iniciar sesión con Discord**.
-- **Los empleados registrados** (de En Pruebas a Encargado) solo ven la **Caja**.
-- **Jefe y Jefe Tribal** ven y editan Pagos, Crafteos, Sorteo, Gestión de Productos y Gestión de empleados, **sin contraseña**.
-- **Solo el Jefe Tribal** da o quita los rangos Jefe y Jefe Tribal, cambia el Discord de un Jefe y marca *No cobra*.
-- **La plantilla** (nombre, rango, Discord, IBAN y No cobra) está en la tabla `employees`, y todos los Jefes ven lo mismo al momento. **☁️ Subir empleados de este navegador a la nube** pasa los que había antes, sin duplicar.
+- **Los empleados registrados** (de Reponedor a Supervisor) solo ven la **Caja**.
+- **Gerente y Jefe Tribal** ven y editan Pagos, Crafteos, Sorteo, Gestión de Productos y Gestión de empleados, **sin contraseña**.
+- **Solo el Jefe Tribal** da o quita los rangos Gerente y Jefe Tribal, cambia el Discord de un Gerente y marca *No cobra*.
+- **La plantilla** (nombre, rango, Discord, IBAN y No cobra) está en la tabla `employees`, y todos los Gerentes ven lo mismo al momento. **☁️ Subir empleados de este navegador a la nube** pasa los que había antes, sin duplicar.
 
-Quién es Jefe lo decide **la base de datos** (funciones `es_jefe` y `es_jefe_tribal`, reglas RLS y el disparador `proteger_rangos`), no la página: aunque alguien toque el código, sin ser Jefe no recibe los datos.
+Quién manda lo decide **la base de datos** (funciones `es_jefe` y `es_jefe_tribal`, reglas RLS y el disparador `proteger_rangos`), no la página: aunque alguien toque el código, sin ser Gerente o Jefe Tribal no recibe los datos.
 
 El SQL está en `supabase/1_empleados_y_permisos.sql`. El programa de escritorio sigue con contraseñas, porque el inicio de sesión de Discord necesita la web.
 
 ## Facturas desde el Discord del Badulaque (bot)
 
-Como en Aguila Motors, un **bot** copia el canal de facturas del Discord del Badulaque a Supabase (tabla `discord_log`, solo la leen los Jefes). En **Pagos**, los Jefes ven el cuadro **📥 Facturas desde el Discord del Badulaque**:
+Como en Aguila Motors, un **bot** copia el canal de facturas del Discord del Badulaque a Supabase (tabla `discord_log`, solo la leen los Gerentes). En **Pagos**, los Gerentes ven el cuadro **📥 Facturas desde el Discord del Badulaque**:
 
 1. Elige **Desde / Hasta**. Por defecto sale la semana de pago: del **domingo 00:00 al sábado 24:00 en hora de España**, que en Guatemala es del **sábado 16:00 al sábado 16:00** (17:00 cuando España está en horario de invierno). Debajo se ve el corte en los dos países.
 2. Pulsa **Traer facturas**: la página pide al bot lo último del canal y carga las facturas de esas fechas ya procesadas.
@@ -78,14 +78,14 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado · Strikes · Rangos · Despedidos**.
 
 - **Listado:** recuadros arriba que también filtran (En plantilla, Con strikes, Para despido 3/3, Sin IBAN, Sin Discord), buscador y orden Por rango / A–Z / Más strikes. Cada fila: avatar del rango, nombre, rango y %, strikes y ✔/⚠ de Discord e IBAN (o «No cobra»). Al tocar una fila se abre su ficha.
-- **Ficha:** «← Listado» y anterior / siguiente; cabecera con avatar grande, rango, strikes y «en el negocio desde» (fecha de alta o, si falta, su primera semana cerrada); **Datos** con «✏️ Editar datos» (nombre, apellido, rango, Discord, IBAN, No cobra) y **Despedir**; **Rango** con la escalera (En Pruebas → Cajero → Cajero Experimentado → Encargado → Jefe), lo vendido esta semana frente al mínimo y **Subir a… / Bajar a…**; gráfica de las últimas 6 semanas cerradas (más la actual si Pagos la tiene cargada) con la línea del mínimo, media y mejor semana; **Strikes** semana a semana con ＋1, −1, Quitar todos y clic en una semana para ponerlo o quitarlo; **Historial**.
+- **Ficha:** «← Listado» y anterior / siguiente; cabecera con avatar grande, rango, strikes y «en el negocio desde» (fecha de alta o, si falta, su primera semana cerrada); **Datos** con «✏️ Editar datos» (nombre, apellido, rango, Discord, IBAN, No cobra) y **Despedir**; **Rango** con la escalera (Reponedor → Cajero → Cajero Principal → Supervisor → Gerente), lo vendido esta semana frente al mínimo y **Subir a… / Bajar a…**; gráfica de las últimas 6 semanas cerradas (más la actual si Pagos la tiene cargada) con la línea del mínimo, media y mejor semana; **Strikes** semana a semana con ＋1, −1, Quitar todos y clic en una semana para ponerlo o quitarlo; **Historial**.
 - **Strikes:** solo los que tienen, separados en «Para despido» y «Con strikes», con cuadritos de las últimas semanas (rojo = strike, punteado = quitado), motivos, ＋1 / −1 / Despedir y el formulario «Poner strike» con motivo. Los de la semana en curso se ven en Pagos (allí el Jefe Tribal también los quita con ✕, los vuelve a poner con ↺ o pone uno a mano).
 - **Rangos:** tabla con la comisión y quién está en cada rango.
 - **Despedidos:** el registro con Readmitir (y Borrar registro solo para el Jefe Tribal).
 - Un strike quitado no suma ni corta la racha. Los ajustes se guardan en línea (`app_settings`, clave `strike_adj`) y cuentan en Pagos, Totales empleados y Copiar para Discord.
 - Todo cambio (alta, rango, nombre, Discord, IBAN, No cobra, strikes, despido, readmisión) se apunta solo en el historial (tabla `emp_historial`, SQL `supabase/7_historial_empleados.sql`). Si la tabla aún no existe, la ficha lo avisa y la página sigue funcionando.
-- **Permisos con la nube:** editar datos, subir / bajar, despedir y todo lo de strikes es **solo del Jefe Tribal**. Los Jefes lo ven todo en modo lectura, dan de alta (rangos bajos) y readmiten rangos bajos. **Sin la nube** (programa de escritorio) se cambia todo con la contraseña de empleados; el historial, la gráfica y los strikes por semana necesitan la nube.
-- **Avatares por rango** (también en el ranking de Pagos): En Pruebas = etiqueta ★ · Cajero = caja registradora ★★ · Cajero Experimentado = cesta de la compra ★★★ · Encargado = portapapeles ★★★★ · Jefe = maletín ★★★★★ · Jefe Tribal = logo del Badulaque ★★★★★. Sin rango: iniciales.
+- **Permisos con la nube:** editar datos, subir / bajar, despedir y todo lo de strikes es **solo del Jefe Tribal**. Los Gerentes lo ven todo en modo lectura, dan de alta (rangos bajos) y readmiten rangos bajos. **Sin la nube** (programa de escritorio) se cambia todo con la contraseña de empleados; el historial, la gráfica y los strikes por semana necesitan la nube.
+- **Avatares por rango** (también en el ranking de Pagos): Reponedor = etiqueta ★ · Cajero = caja registradora ★★ · Cajero Principal = cesta de la compra ★★★ · Supervisor = portapapeles ★★★★ · Gerente = maletín ★★★★★ · Jefe Tribal = logo del Badulaque ★★★★★. Sin rango: iniciales.
 - En el móvil: la lista arriba y la ficha a pantalla completa.
 
 ## Strikes, bono y cierre de semana
@@ -94,7 +94,7 @@ Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado �
 - **3 strikes seguidos = despido** (🚫). Los strikes se borran en cuanto la persona llega al mínimo una semana. El Jefe Tribal puede quitar o poner strikes a mano (ver «Gestión de empleados»).
 - El **Jefe Tribal** (100 %, solo el dueño) no lleva strikes ni compite por el bono.
 - **Bono del empleado de la semana: $ 10.000** para quien más cobra (si hay empate, para todos). Se suma a lo que se le paga, al Total a pagar y al texto de Discord.
-- **Cerrar semana** (solo con la nube, para los Jefes): cuando hayas pagado, pulsa **Cerrar semana** en Pagos. Se guarda lo que vendió y cobró cada uno y quién llevó strike (tabla `pagos_semanas`, SQL `supabase/5_semanas_strikes.sql`). **Reabrir** la borra si te equivocaste.
+- **Cerrar semana** (solo con la nube, para los Gerentes): cuando hayas pagado, pulsa **Cerrar semana** en Pagos. Se guarda lo que vendió y cobró cada uno y quién llevó strike (tabla `pagos_semanas`, SQL `supabase/5_semanas_strikes.sql`). **Reabrir** la borra si te equivocaste.
 - En el programa de escritorio (sin nube) no hay historial: los avisos dicen solo «Strike», sin contar semanas.
 - Los ascensos no son automáticos: los das tú desde la ficha en «Gestión de empleados».
 - Las cifras están en `WEEK_MIN`, `WEEK_BONUS` y `STRIKE_MAX` al principio de `app.js`.
@@ -105,20 +105,22 @@ Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado �
 - El despedido sale de la plantilla y de los pagos, pero queda en el registro **Despedidos** (pestaña de «Gestión de empleados»), con la fecha, el motivo y quién lo despidió. Desde ahí se puede **Readmitir** con su rango, Discord e IBAN.
 - Si añades a alguien con el mismo nombre que un despedido, la página propone readmitirlo.
 - Si un despedido tiene ventas en la semana, sale en el ranking como «Despedido» con $ 0 y sin strike.
-- Con la nube: pierde el acceso a la página aunque inicie sesión con su Discord. Solo el Jefe Tribal despide o readmite a un Jefe, y nadie puede despedirse a sí mismo. SQL: `supabase/6_despidos.sql`.
+- Con la nube: pierde el acceso a la página aunque inicie sesión con su Discord. Solo el Jefe Tribal despide o readmite a un Gerente, y nadie puede despedirse a sí mismo. SQL: `supabase/6_despidos.sql`.
 - Sin la nube (programa de escritorio) el registro se guarda en ese equipo.
 
 ## Rangos y comisión
+
+Nombres de los rangos desde la versión 27 (los mismos que en el juego): Reponedor, Cajero, Cajero Principal, Supervisor, Gerente y Jefe Tribal. Si algún empleado aún tiene guardado un nombre antiguo (En Pruebas, Cajero Experimentado, Encargado o Jefe), la página lo lee con el nombre nuevo; el SQL `supabase/8_rangos_nuevos.sql` los renombra en la base de datos.
 
 Lo que se paga a cada empleado es un **% de lo que ha cobrado** en la semana (facturas pagadas, datáfono incluido, más sus rascas), según su rango:
 
 | Rango | Comisión |
 |---|---|
-| En Pruebas | 35 % |
+| Reponedor | 35 % |
 | Cajero | 40 % |
-| Cajero Experimentado | 45 % |
-| Encargado | 50 % |
-| Jefe | 50 % |
+| Cajero Principal | 45 % |
+| Supervisor | 50 % |
+| Gerente | 50 % |
 | Jefe Tribal | 100 % (solo el dueño) |
 
 Las facturas pendientes de pago no cuentan. Los rangos y porcentajes se cambian en `app.js` → `RANKS`.
@@ -257,6 +259,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 27 · 1 de noviembre de 2026 · Rangos con nombres de tienda
+- Rangos renombrados como en el juego: En Pruebas → **Reponedor**, Cajero Experimentado → **Cajero Principal**, Encargado → **Supervisor**, Jefe → **Gerente** (Cajero y Jefe Tribal igual). Mismas comisiones, iconos y estrellas.
+- La página entiende los nombres antiguos mientras queden guardados; SQL `8_rangos_nuevos.sql` para renombrarlos en Supabase y dar a Gerente los permisos de Jefe.
 
 ### Versión 26 · 1 de noviembre de 2026 · Gestión de empleados nueva
 - Ventana «👥 Empleados» por pestañas como en Aguila Motors (v92–v98): Listado con filtros, ficha de cada empleado (datos, rango con Subir / Bajar, gráfica de facturación, strikes semana a semana e historial), Strikes, Rangos y Despedidos.
