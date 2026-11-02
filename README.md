@@ -260,6 +260,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 28 · 1 de noviembre de 2026 · Iconos en los botones del ticket
+- Iconos en Deshacer, Quitar, Total, Copiar concepto y Limpiar.
+- Total y Limpiar cambian de sitio: Total arriba a la derecha y Limpiar abajo, junto a Copiar concepto.
+
 ### Versión 27 · 1 de noviembre de 2026 · Rangos con nombres de tienda
 - Rangos renombrados como en el juego: En Pruebas → **Reponedor**, Cajero Experimentado → **Cajero Principal**, Encargado → **Supervisor**, Jefe → **Gerente** (Cajero y Jefe Tribal igual). Mismas comisiones, iconos y estrellas.
 - La página entiende los nombres antiguos mientras queden guardados; SQL `8_rangos_nuevos.sql` para renombrarlos en Supabase y dar a Gerente los permisos de Jefe.

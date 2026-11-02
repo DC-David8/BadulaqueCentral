@@ -284,7 +284,10 @@ tbody tr.is-last { background: rgba(58, 160, 255, 0.10); }
 .ticket-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .ticket-actions button { height: 52px; }
 .ticket-actions .key-wide { grid-column: span 2; height: 60px; font-size: 17px; }
-.ticket-actions .light { height: 60px; }
+.ticket-actions #btn-clear { height: 60px; }
+.ticket-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.ticket-actions .btn-ic { width: 17px; height: 17px; flex: none; }
+.ticket-actions .key-wide .btn-ic { width: 20px; height: 20px; }
 
 input.qty-input {
   width: 58px;
@@ -789,7 +792,7 @@ dialog::backdrop { background: rgba(4, 6, 9, 0.75); }
   .ticket-table-wrap th, .ticket-table-wrap td { padding: 8px 6px; }
   .ticket-table-wrap .qty-input { width: 52px; }
   .ticket-actions button { height: 46px; font-size: 13px; }
-  .ticket-actions .key-wide, .ticket-actions .light { height: 50px; }
+  .ticket-actions .key-wide, .ticket-actions #btn-clear { height: 50px; }
 
   /* Botones fijos de la Caja, encima de la barra de secciones */
   body.is-caja .m-actions {
