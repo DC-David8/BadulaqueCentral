@@ -3003,7 +3003,7 @@ function setupContabilidad() {
     const info = byId("pg-close-info");
     reopen.hidden = !done;
     btn.disabled = !hasData || !wk;
-    btn.textContent = done ? "Volver a guardar" : "Cerrar semana";
+    btn.querySelector(".btn-txt").textContent = done ? "Volver a guardar" : "Cerrar semana";
     if (done) {
       const n = (done.datos?.rows || []).filter((r) => r.strike).length;
       const when = done.created_at ? new Date(done.created_at).toLocaleString("es-GT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";

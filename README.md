@@ -260,6 +260,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 29 · 1 de noviembre de 2026 · Iconos en Pagos
+- Iconos en Copiar para Discord, Totales empleados, Gestión de empleados, Cerrar semana y Reabrir.
+
 ### Versión 28 · 1 de noviembre de 2026 · Iconos en los botones del ticket
 - Iconos en Deshacer, Quitar, Total, Copiar concepto y Limpiar.
 - Total y Limpiar cambian de sitio: Total arriba a la derecha y Limpiar abajo, junto a Copiar concepto.
