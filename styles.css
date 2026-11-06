@@ -1112,12 +1112,12 @@ dialog.emp-modal { width: min(1180px, 96vw); }
 .emp-hire { white-space: nowrap; }
 .emp-hire::before { content: " · "; }
 .emp-hire.approx { opacity: .7; }
-.emp-hire-sel { width: auto; flex: 0 0 auto; height: 40px; padding: 0 10px; font-size: 13px; }
+select#emp-hire.emp-hire-sel { width: 210px; flex: 0 0 auto; height: 40px; padding: 0 10px; font-size: 13px; }
 .emp-hire-custom { display: inline-flex; align-items: center; gap: 6px; }
 .emp-hire-custom[hidden] { display: none; }
 .emp-date { width: auto; color-scheme: dark; }
 @media (max-width: 820px) {
-  .emp-hire-sel { flex: 1 1 0; min-width: 0; }
+  select#emp-hire.emp-hire-sel { width: auto; flex: 1 1 0; min-width: 0; }
   .emp-hire { display: block; }
   .emp-hire::before { content: none; }
   .emp-hire-custom { flex: 1 1 100%; }
