@@ -77,7 +77,7 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 
 Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado · Strikes · Rangos · Despedidos**.
 
-- **Listado:** recuadros arriba que también filtran (En plantilla, Con strikes, Para despido 3/3, Sin IBAN, Sin Discord), buscador y orden Por rango / A–Z / Más strikes. Cada fila: avatar del rango, nombre, rango y %, strikes y ✔/⚠ de Discord e IBAN (o «No cobra»). Al tocar una fila se abre su ficha.
+- **Listado:** recuadros arriba que también filtran (En plantilla, Con strikes, Para despido 3/3, Sin IBAN, Sin Discord), buscador, orden Por rango / A–Z / Más strikes / Contratación y filtro por **fecha de contratación** (últimos 7 o 30 días, este mes, mes pasado o las fechas que elijas). Cada fila lleva su fecha de contratación (📅; con «~» si no la tiene y se usa su primera semana cerrada). La fecha se pone o se corrige en «Editar datos»; los nuevos la llevan sola. Cada fila: avatar del rango, nombre, rango y %, strikes y ✔/⚠ de Discord e IBAN (o «No cobra»). Al tocar una fila se abre su ficha.
 - **Ficha:** «← Listado» y anterior / siguiente; cabecera con avatar grande, rango, strikes y «en el negocio desde» (fecha de alta o, si falta, su primera semana cerrada); **Datos** con «✏️ Editar datos» (nombre, apellido, rango, Discord, IBAN, No cobra) y **Despedir**; **Rango** con la escalera (Reponedor → Cajero → Cajero Principal → Supervisor → Gerente), lo vendido esta semana frente al mínimo y **Subir a… / Bajar a…**; gráfica de las últimas 6 semanas cerradas (más la actual si Pagos la tiene cargada) con la línea del mínimo, media y mejor semana; **Strikes** semana a semana con ＋1, −1, Quitar todos y clic en una semana para ponerlo o quitarlo; **Historial**.
 - **Strikes:** solo los que tienen, separados en «Para despido» y «Con strikes», con cuadritos de las últimas semanas (rojo = strike, punteado = quitado), motivos, ＋1 / −1 / Despedir y el formulario «Poner strike» con motivo. Los de la semana en curso se ven en Pagos (allí el Jefe Tribal también los quita con ✕, los vuelve a poner con ↺ o pone uno a mano).
 - **Rangos:** tabla con la comisión y quién está en cada rango, y arriba **📣 Anuncio de ascensos y descensos**: junta los cambios de rango desde la fecha que elijas (con la nube salen del historial), deja quitar a alguien y **Copiar para Discord** da el anuncio con cada persona y su rango nuevo etiquetados. Si alguien sube y vuelve a bajar en ese tiempo, no sale.
@@ -259,6 +259,11 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 32 · 5 de noviembre de 2026 · Fecha de contratación
+- Fecha de contratación en el listado, la ficha y «Editar datos», orden por contratación y filtro por fechas. Los cambios de fecha quedan en el historial.
+- Aviso de arriba como en Aguila Motors: «En línea · N empleados · Jefe Tribal: nombre (los cambios se guardan al momento)».
+- «Subir empleados de este navegador» solo sale si queda alguien del navegador que no está en línea.
 
 ### Versión 31 · 1 de noviembre de 2026 · Rol de Cajero
 - El anuncio de ascensos también etiqueta el rol de Cajero.

@@ -1087,7 +1087,7 @@ dialog.emp-modal { width: min(1180px, 96vw); }
   .emp-fired-row > .emp-acts { grid-column: 1 / -1; }
   .emp-list { max-height: none; }
   .emp-bar #emp-search { flex-basis: 100%; }
-  .emp-sort { flex: 1 1 0; min-width: 0; }
+  .emp-sort { flex: 1 1 100%; min-width: 0; }
   .emp-sort .emp-chip { flex: 1; padding: 7px 6px; }
   .emp-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .emp-kpi { padding: 7px 9px; font-size: 11px; }
@@ -1107,3 +1107,19 @@ dialog.emp-modal { width: min(1180px, 96vw); }
 .emp-ann-list { display: flex; flex-direction: column; gap: 6px; }
 .emp-ann-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--key); font-size: 14px; cursor: pointer; }
 .emp-ann-row input { width: 17px; height: 17px; accent-color: var(--accent); }
+
+/* Fecha de contratacion */
+.emp-hire { white-space: nowrap; }
+.emp-hire::before { content: " · "; }
+.emp-hire.approx { opacity: .7; }
+.emp-hire-sel { width: auto; flex: 0 0 auto; height: 40px; padding: 0 10px; font-size: 13px; }
+.emp-hire-custom { display: inline-flex; align-items: center; gap: 6px; }
+.emp-hire-custom[hidden] { display: none; }
+.emp-date { width: auto; color-scheme: dark; }
+@media (max-width: 820px) {
+  .emp-hire-sel { flex: 1 1 0; min-width: 0; }
+  .emp-hire { display: block; }
+  .emp-hire::before { content: none; }
+  .emp-hire-custom { flex: 1 1 100%; }
+  .emp-hire-custom .emp-date { flex: 1; min-width: 0; }
+}

@@ -529,6 +529,51 @@ function rankRoleTag(rank) {
 }
 
 // ---------------------------------------------------------------------------
+// Fecha de contratacion. Con la nube es la columna alta_at (SQL 7; los nuevos
+// la llevan sola). Sin ella se guarda en este equipo. Si no hay fecha, se usa
+// la primera semana cerrada en la que sale (aproximada).
+// ---------------------------------------------------------------------------
+const EMPLOYEE_ALTA_STORAGE_KEY = "badu_employees_alta_v1";
+function loadAltaLocal() {
+  try {
+    return JSON.parse(localStorage.getItem(EMPLOYEE_ALTA_STORAGE_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+function setEmployeeAltaLocal(fullNameStr, day) {
+  const m = loadAltaLocal();
+  const k = normalizeKeySimple(fullNameStr);
+  if (day) m[k] = day;
+  else delete m[k];
+  try {
+    localStorage.setItem(EMPLOYEE_ALTA_STORAGE_KEY, JSON.stringify(m));
+  } catch {
+    // sin almacenamiento
+  }
+}
+// "AAAA-MM-DD" en la hora de este equipo.
+function localDay(v) {
+  if (!v) return "";
+  const t = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const fmtDayEs = (day) => (day ? `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}` : "");
+// { day: "AAAA-MM-DD", exact: true|false } o null.
+function hireDateOf(e) {
+  const full = fullName(e);
+  let day = "";
+  if (cloudOn()) day = localDay(EMP_CLOUD.list.find((x) => String(x.id) === String(e.id))?.altaAt);
+  else day = loadAltaLocal()[normalizeKeySimple(full)] || "";
+  if (day) return { day, exact: true };
+  const w = STRIKE_HIST.slice().reverse().find((x) => strikeRowIn(x, e.id, full));
+  return w ? { day: String(w.semana).slice(0, 10), exact: false } : null;
+}
+
+// ---------------------------------------------------------------------------
 // Ascensos y descensos para anunciar. Con la nube salen del historial
 // (emp_historial, tipo "rango"); sin ella, de un registro en este equipo.
 // ---------------------------------------------------------------------------
@@ -1178,6 +1223,7 @@ function empLogDiff(before, next) {
   if (!!before.noPay !== !!next.noPay) empLog(id, "datos", next.noPay ? "💸 Marcado como «No cobra»" : "💸 Vuelve a cobrar la nómina");
   if ((before.discord || "") !== (next.discord || "")) empLog(id, "datos", next.discord ? "🔗 Discord cambiado" : "🔗 Discord quitado");
   if ((before.iban || "") !== (next.iban || "")) empLog(id, "datos", `🏦 IBAN: ${next.iban || "quitado"}`);
+  if (localDay(before.altaAt) !== localDay(next.altaAt)) empLog(id, "datos", `📅 Fecha de contratación: ${fmtDayEs(localDay(next.altaAt)) || "quitada"}`);
 }
 
 async function empCloudLoad() {
@@ -3959,7 +4005,7 @@ function setupEmployeesAdminModal({ onChanged }) {
   const boss = () => cloudOn() && isJefe() && AUTH.tribal;
   const isSelf = (e) => !!(cloudOn() && AUTH.discordId && getEmployeeDiscord(fullName(e)) === AUTH.discordId);
   const strikesOf = (e) => (cloudOn() ? strikesBefore(e.id, fullName(e)) : 0);
-  const pctOf = (e) => (e.rank ? `${Math.round(pctForRank(e.rank) * 100)} %` : "-");
+  const pctOf = (e) => (e.rank ? `${Math.round(pctForRank(e.rank) * 100)}\u00a0%` : "-");
   const cloudRow = (e) => (cloudOn() ? EMP_CLOUD.list.find((x) => String(x.id) === String(e.id)) : null);
 
   function setStatus(text, ok = false) {
@@ -4019,14 +4065,19 @@ function setupEmployeesAdminModal({ onChanged }) {
     const note = byId("emp-cloud-note");
     if (note) {
       if (on) {
+        const who = AUTH.name || (AUTH.profile ? fullName(AUTH.profile) : "");
         note.textContent = isJefe()
-          ? `☁️ En línea · ${employees.length} en plantilla · sesión de ${AUTH.tribal ? "Jefe Tribal" : "Gerente"}${AUTH.tribal ? "" : " (solo lectura: das de alta y readmites rangos bajos; lo demás, el Jefe Tribal)"}`
+          ? `☁️ En línea · ${employees.length} ${employees.length === 1 ? "empleado" : "empleados"} · ${AUTH.tribal ? "Jefe Tribal" : "Gerente"}: ${who} ${AUTH.tribal ? "(los cambios se guardan al momento)" : "(solo lectura: das de alta y readmites rangos bajos; lo demás, el Jefe Tribal)"}`
           : "Solo los Gerentes y el Jefe Tribal ven la plantilla.";
       } else {
         note.textContent = unlocked ? "🔓 Desbloqueado en este equipo" : "🔒 Programa de escritorio: desbloquea con la contraseña para cambiar algo.";
       }
     }
-    if (uploadBtn) uploadBtn.hidden = !(on && isJefe() && loadEmployeesLocal().length);
+    // "Subir empleados de este navegador" solo si queda alguno que no esta en la nube.
+    if (uploadBtn) {
+      const inCloud = new Set(EMP_CLOUD.list.map((x) => normalizeKeySimple(fullName(x))));
+      uploadBtn.hidden = !(on && isJefe() && loadEmployeesLocal().some((x) => !inCloud.has(normalizeKeySimple(fullName(x)))));
+    }
     byId("emp-tab-new").hidden = !canAdd() && cloudOn();
     byId("emp-tab-fired").hidden = !hasAccess();
   }
@@ -4040,14 +4091,49 @@ function setupEmployeesAdminModal({ onChanged }) {
     { k: "discord", label: "Sin Discord", test: (e) => !getEmployeeDiscord(fullName(e)), cls: "w" },
   ];
 
+  // Rango de fechas de contratacion elegido: { from, to } (AAAA-MM-DD) o null.
+  const hireSel = byId("emp-hire");
+  const hireFrom = byId("emp-hire-from");
+  const hireTo = byId("emp-hire-to");
+  function hireRange() {
+    const v = hireSel?.value || "";
+    if (!v) return null;
+    const today = localDay(new Date().toISOString());
+    const back = (n) => localDay(new Date(Date.now() - n * 86400000).toISOString());
+    if (v === "7") return { from: back(6), to: today };
+    if (v === "30") return { from: back(29), to: today };
+    if (v === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
+    if (v === "prev") {
+      const d = new Date();
+      const p = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      const last = new Date(d.getFullYear(), d.getMonth(), 0);
+      return { from: localDay(p.toISOString()), to: localDay(last.toISOString()) };
+    }
+    if (v === "custom") return { from: hireFrom.value || "0000-00-00", to: hireTo.value || "9999-99-99" };
+    return null;
+  }
+  function inHireRange(e) {
+    const r = hireRange();
+    if (!r) return true;
+    const h = hireDateOf(e);
+    return !!h && h.day >= r.from && h.day <= r.to;
+  }
+
   function shownList() {
     const q = normalizeKeySimple(searchInput.value || "");
     const f = FILTERS.find((x) => x.k === filter) || FILTERS[0];
-    let out = employees.filter((e) => f.test(e) && (!q || normalizeKeySimple(`${e.name} ${e.surname} ${e.rank || ""}`).includes(q)));
+    let out = employees.filter((e) => f.test(e) && inHireRange(e) && (!q || normalizeKeySimple(`${e.name} ${e.surname} ${e.rank || ""}`).includes(q)));
     if (sortBy === "az") out = out.slice().sort((x, y) => fullName(x).localeCompare(fullName(y), "es", { sensitivity: "base" }));
     else if (sortBy === "strikes") out = out.slice().sort((x, y) => strikesOf(y) - strikesOf(x) || byRankThenName(x, y));
+    else if (sortBy === "hire") out = out.slice().sort((x, y) => (hireDateOf(y)?.day || "").localeCompare(hireDateOf(x)?.day || "") || byRankThenName(x, y));
     return out;
   }
+  hireSel?.addEventListener("change", () => {
+    byId("emp-hire-custom").hidden = hireSel.value !== "custom";
+    renderList();
+  });
+  hireFrom?.addEventListener("change", renderList);
+  hireTo?.addEventListener("change", renderList);
 
   function renderKpis() {
     const box = byId("emp-kpis");
@@ -4092,7 +4178,14 @@ function setupEmployeesAdminModal({ onChanged }) {
       const row = mk("button", "emp-row");
       row.type = "button";
       const nm = mk("div", "emp-row-name");
-      nm.append(mk("b", "", full), mk("small", "", `${e.rank || "Sin rango"} · ${pctOf(e)}`));
+      const hd = hireDateOf(e);
+      const sm = mk("small", "", `${e.rank || "Sin rango"} · ${pctOf(e)}`);
+      if (hd) {
+        const d = mk("span", "emp-hire" + (hd.exact ? "" : " approx"), `📅 ${hd.exact ? "" : "~"}${fmtDayEs(hd.day)}`);
+        d.title = hd.exact ? "Fecha de contratación" : "Sin fecha de contratación: primera semana cerrada en la que sale";
+        sm.appendChild(d);
+      }
+      nm.append(mk("b", "", full), sm);
       const flags = mk("div", "emp-row-flags");
       const disc = getEmployeeDiscord(full);
       const iban = getEmployeeIban(full);
@@ -4184,9 +4277,9 @@ function setupEmployeesAdminModal({ onChanged }) {
     const line = mk("div", "emp-fh-line");
     line.appendChild(badge(e.rank));
     if (cloudOn() && n) line.appendChild(strikeChip(n));
-    const alta = cloudRow(e)?.altaAt || "";
-    const since = alta || (STRIKE_HIST.slice().reverse().find((w) => strikeRowIn(w, e.id, full))?.semana ?? "");
-    if (since) line.appendChild(mk("span", "muted", `· en el negocio desde ${new Date(String(since).length === 10 ? `${since}T12:00:00` : since).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" })}${alta ? "" : " (primera semana cerrada)"}`));
+    const hd = hireDateOf(e);
+    if (hd) line.appendChild(mk("span", "muted", `· 📅 contratado el ${fmtDayEs(hd.day)}${hd.exact ? "" : " (aprox.: primera semana cerrada)"}`));
+    else line.appendChild(mk("span", "muted", "· 📅 sin fecha de contratación"));
     who.appendChild(line);
     head.appendChild(who);
     if (canEdit()) {
@@ -4377,7 +4470,11 @@ function setupEmployeesAdminModal({ onChanged }) {
     const npL = mk("label", "emp-check");
     npL.append(np, mk("span", "", "No cobra la nómina"));
     const grid = mk("div", "emp-edit-grid");
-    grid.append(field("Nombre", nIn), field("Apellido", sIn), field("Rango", rSel), field("IBAN", iIn), field("ID de Discord", dIn));
+    const hdNow = hireDateOf(e);
+    const aIn = inp(hdNow?.exact ? hdNow.day : "", "");
+    aIn.type = "date";
+    aIn.classList.add("emp-date");
+    grid.append(field("Nombre", nIn), field("Apellido", sIn), field("Rango", rSel), field("IBAN", iIn), field("Fecha de contratación", aIn), field("ID de Discord", dIn));
     const save = btn("Guardar", "primary");
     const cancel = btn("Cancelar");
     cancel.addEventListener("click", () => {
@@ -4402,7 +4499,10 @@ function setupEmployeesAdminModal({ onChanged }) {
       save.disabled = true;
       try {
         if (cloudOn()) {
-          await empCloudPatch(e.id, { name, surname, rank: rSel.value, discord, iban: ib, no_pay: np.checked });
+          const patch = { name, surname, rank: rSel.value, discord, iban: ib, no_pay: np.checked };
+          // La fecha solo se manda si cambia (sin el SQL 7 la columna no existe).
+          if (aIn.value !== (hdNow?.exact ? hdNow.day : "")) patch.alta_at = aIn.value ? `${aIn.value}T12:00:00Z` : null;
+          await empCloudPatch(e.id, patch);
         } else {
           await updateEmployee(e.id, { name, surname, rank: rSel.value }, adminPass);
           if ((e.rank || "") !== rSel.value) rankLogLocal({ id: e.id, name, surname }, e.rank, rSel.value);
@@ -4414,6 +4514,8 @@ function setupEmployeesAdminModal({ onChanged }) {
           setEmployeeDiscord(newFull, discord);
           setEmployeeIban(newFull, ib);
           setEmployeeNoPay(newFull, np.checked);
+          if (newFull !== full) setEmployeeAltaLocal(full, "");
+          setEmployeeAltaLocal(newFull, aIn.value);
         }
         editing = false;
         setStatus(`✔ Datos de ${newFull} guardados.`, true);
@@ -4821,6 +4923,7 @@ function setupEmployeesAdminModal({ onChanged }) {
       const full = `${name} ${surname}`;
       if (discord) setEmployeeDiscord(full, discord);
       if (iban) setEmployeeIban(full, iban);
+      if (!cloudOn()) setEmployeeAltaLocal(full, localDay(new Date().toISOString()));
       nameInput.value = "";
       surInput.value = "";
       rankInput.value = "";

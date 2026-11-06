@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=31" />
+  <link rel="stylesheet" href="styles.css?v=32" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -460,7 +460,7 @@
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
-    <footer class="app-version">Versión 31 · Rol de Cajero</footer>
+    <footer class="app-version">Versión 32 · Fecha de contratación</footer>
   </main>
   </div>
 
@@ -608,7 +608,21 @@
               <button type="button" class="emp-chip is-on" data-sort="rank">Por rango</button>
               <button type="button" class="emp-chip" data-sort="az">A–Z</button>
               <button type="button" class="emp-chip" data-sort="strikes">Más strikes</button>
+              <button type="button" class="emp-chip" data-sort="hire">Contratación</button>
             </div>
+            <select id="emp-hire" class="text-input emp-hire-sel" aria-label="Filtrar por fecha de contratación">
+              <option value="">📅 Contratados: todos</option>
+              <option value="7">📅 Últimos 7 días</option>
+              <option value="30">📅 Últimos 30 días</option>
+              <option value="month">📅 Este mes</option>
+              <option value="prev">📅 Mes pasado</option>
+              <option value="custom">📅 Elegir fechas…</option>
+            </select>
+            <span class="emp-hire-custom" id="emp-hire-custom" hidden>
+              <input id="emp-hire-from" class="text-input emp-date" type="date" aria-label="Contratados desde" />
+              <span class="muted">a</span>
+              <input id="emp-hire-to" class="text-input emp-date" type="date" aria-label="Contratados hasta" />
+            </span>
             <button type="button" id="emp-refresh" class="ghost" title="Volver a cargar">↻</button>
           </div>
           <div class="emp-list" id="emp-list"></div>
@@ -751,6 +765,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=31"></script>
+  <script src="app.js?v=32"></script>
 </body>
 </html>
