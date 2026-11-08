@@ -103,6 +103,14 @@ Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado �
 - Los ascensos no son automáticos: los das tú desde la ficha en «Gestión de empleados».
 - Las cifras están en `WEEK_MIN`, `WEEK_BONUS` y `STRIKE_MAX` al principio de `app.js`.
 
+## Panel del Jefe Tribal (📊 Panel)
+
+- Pestaña solo para el **Jefe Tribal** con sesión de Discord (no sale a nadie más ni en el programa de escritorio). Se llena sola con las facturas del Discord, las semanas cerradas en Pagos y la plantilla.
+- Semana de domingo a sábado con ◀ ▶ y **🔄 Actualizar** (pide al bot lo último del canal).
+- Tarjetas: 💰 Vendido, 👥 Nóminas (con el bono), 🍎 Queda para el Badulaque y ⭐ Empleado de la semana, comparadas con la semana anterior.
+- Gráfica de las últimas 8 semanas, avisos (3/3 strikes, 2/3 con lo que falta, 💤 inactividad, sin IBAN, sin Discord), ranking de ventas, mejores clientes y movimientos de plantilla.
+- Una semana sin cerrar en Pagos se estima con las facturas del Discord, **sin rascas** (sale marcada con *). La semana en curso no se compara con la anterior hasta cerrarla.
+
 ## Despidos
 
 - En la ficha del empleado el botón **Despedir** sustituye a Eliminar: se elige el **tipo de baja** (👋 Baja voluntaria, 💤 Inactividad, ⚠️ 3 strikes, 🚫 Expulsión, 🕊️ CK del personaje, 📋 Otro) y se puede añadir una nota interna (nunca sale en Discord). Se guarda en el motivo («Inactividad: nota»). Con 3/3 strikes sale marcado «3 strikes» y con el aviso de inactividad en rojo, «Inactividad». Los despidos antiguos se clasifican por su texto.
@@ -263,6 +271,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 34 · 8 de noviembre de 2026 · Panel del Jefe Tribal
+- Nueva pestaña **📊 Panel** (como el Panel del Jefe de Aguila Motors), solo para el Jefe Tribal: cifras de la semana, gráfica de 8 semanas, avisos, ranking, mejores clientes y plantilla. Sin Informes ni Compraventa, que el Badulaque no tiene. No necesita SQL nuevo.
 
 ### Versión 33 · 8 de noviembre de 2026 · Empleados como Aguila Motors
 - Gestión de empleados con todas las novedades de Aguila Motors (v100–v123):
