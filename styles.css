@@ -1235,3 +1235,4 @@ body.cloud-mode.role-tribal .tab.tab-jefe { display: flex; }
   .jp-nav b { flex: 1; min-width: 0; font-size: 12px; }
   #jp-refresh { width: 100%; }
 }
+.emp-dc-star { width: 18px; text-align: center; }

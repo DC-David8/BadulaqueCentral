@@ -897,15 +897,45 @@ async function descensosSemana(sun, people) {
   return { desc, bajas };
 }
 // Un solo mensaje con ascensos, descensos y bajas (los apartados vacios no salen).
-function movDiscordText(up, desc, bajas, sun, cierre) {
-  if (!up.length && !desc.length && !bajas.length) return "";
+// Emojis del servidor de Discord del Badulaque (se pegan tal cual).
+const DC_EMOJI_AGUILA = "<:aguila:1469892536234414202>";
+const DC_EMOJI_MANZANA = "<:manzana:1469893121981677588>";
+const DC_EMOJI_SALUDO = "<:pandasaludo:1419702029781045388>";
+// Felicitacion al empleado de la semana (se elige una al azar).
+const STAR_FRASES = [
+  "tu desempeño es impoluto. ¡Sigue así!",
+  "has sido el motor del Badulaque esta semana. ¡Enhorabuena!",
+  "nadie ha vendido como tú. ¡Gracias por tirar del equipo!",
+  "la caja no ha parado contigo detrás. ¡Bien hecho!",
+  "trabajo impecable de principio a fin. ¡A por otra semana igual!",
+  "eres el ejemplo a seguir esta semana. ¡Sigue así!",
+];
+const STAR_FRASES_VARIOS = [
+  "vuestro desempeño ha sido impoluto. ¡Seguid así!",
+  "habéis empatado en lo más alto. ¡Enhorabuena a los dos!",
+  "sois el ejemplo a seguir esta semana. ¡Gracias por tirar del equipo!",
+];
+function movDiscordText(up, desc, bajas, sun, cierre, star = null) {
+  const stars = star?.people?.length ? star.people : [];
+  if (!up.length && !desc.length && !bajas.length && !stars.length) return "";
   const role = (r) => rankRoleTag(r);
   const who = (it) => (it.discord && it.mention !== false ? `<@${it.discord}>` : `**${it.name}**`);
-  const parts = [];
-  if (up.length) parts.push(`## 📈 Ascensos\n${up.map((it) => `⬆️ ${who(it)} pasa de ${role(it.from)} a ${role(it.to)} ${it.motivo}`).join("\n")}`);
-  if (desc.length) parts.push(`## 📉 Descensos\n${desc.map((it) => `⬇️ ${who(it)} pasa de ${role(it.from)} a ${role(it.to)} ${it.frase}`).join("\n")}`);
-  if (bajas.length) parts.push(`## 🚪 Bajas del Badulaque\n${bajas.map((it) => `${bajaTipo(it.tipo).e} ${who(it)}${it.rank ? ` (${role(it.rank)})` : ""} ${it.frase}`).join("\n")}`);
-  return `# 🍎 MOVIMIENTOS DE PERSONAL DE LA SEMANA\n-# Semana del ${ascDM(sun)} al ${ascDM(ascDay(sun, 6))} · Badulaque Central\n\n${parts.join("\n\n")}\n\n${cierre}\n-# — ${ROLE_TAG_JEFATURA} · Badulaque Central`;
+  const blocks = [];
+  if (up.length || desc.length || bajas.length) {
+    const parts = [];
+    if (up.length) parts.push(`## 📈 Ascensos\n${up.map((it) => `⬆️ ${who(it)} pasa de ${role(it.from)} a ${role(it.to)} ${it.motivo}`).join("\n")}`);
+    if (desc.length) parts.push(`## 📉 Descensos\n${desc.map((it) => `⬇️ ${who(it)} pasa de ${role(it.from)} a ${role(it.to)} ${it.frase}`).join("\n")}`);
+    if (bajas.length) parts.push(`## 🚪 Bajas del Badulaque\n${bajas.map((it) => `${bajaTipo(it.tipo).e} ${who(it)}${it.rank ? ` (${role(it.rank)})` : ""} ${it.frase}`).join("\n")}`);
+    blocks.push(`# ${DC_EMOJI_AGUILA} MOVIMIENTOS DE PERSONAL DE LA SEMANA - BADULAQUE CENTRAL ${DC_EMOJI_MANZANA}\n-# Semana del ${ascDM(sun)} al ${ascDM(ascDay(sun, 6))}\n\n${parts.join("\n\n")}\n\n${cierre}`);
+  }
+  if (stars.length) {
+    const names = stars.map(who);
+    const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}` : names[0];
+    const line = names.length > 1 ? `${list} sois el ${EMPLOYEE_OF_WEEK_TAG}, ${star.frase}` : `${list} eres el ${EMPLOYEE_OF_WEEK_TAG}, ${star.frase}`;
+    const head = `# ${DC_EMOJI_SALUDO} RECONOCIMIENTO SEMANAL ${DC_EMOJI_SALUDO}`;
+    blocks.push(blocks.length ? `${head}\n\n${line}` : `${head}\n-# Semana del ${ascDM(sun)} al ${ascDM(ascDay(sun, 6))} · Badulaque Central\n\n${line}`);
+  }
+  return `${blocks.join("\n\n")}\n\n-# — ${ROLE_TAG_JEFATURA} · Badulaque Central`;
 }
 
 // Ventana para despedir: tipo de baja + nota opcional. Devuelve el motivo
@@ -5455,7 +5485,28 @@ function setupEmployeesAdminModal({ onChanged }) {
   // ---------- Pestaña Rangos ----------
   // ---------- 📣 Para Discord: movimientos de personal de una semana ----------
   // Separados en pantalla, pero en UN solo mensaje (un copiar, un pegar).
-  const dc = { sun: null, key: "", items: [], desc: [], bajas: [], off: new Set(), frase: ascFraseAzar(), cierre: pickOne(DESC_CIERRES), cierreB: pickOne(BAJAS_CIERRES), err: "" };
+  const dc = { sun: null, key: "", items: [], desc: [], bajas: [], off: new Set(), frase: ascFraseAzar(), cierre: pickOne(DESC_CIERRES), cierreB: pickOne(BAJAS_CIERRES), err: "", star: [], starKey: "", starFrase: "", starAuto: false };
+  // ⭐ Empleado de la semana: el del bono en Pagos (semana cerrada) o el que elijas.
+  const dcIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const dcStarPool = () => EMP_CLOUD.list.filter((e) => !e.firedAt && !isOwnerRank(e.rank)).sort(byRankThenName);
+  function dcStarInit() {
+    const wk = STRIKE_HIST.find((w) => String(w.semana) === dcIso(dc.sun));
+    const winners = (wk?.datos?.rows || []).filter((r) => Number(r.bonus) > 0);
+    const pool = dcStarPool();
+    dc.star = winners.map((r) => pool.find((e) => (r.id != null && String(e.id) === String(r.id)) || normalizeKeySimple(fullName(e)) === normalizeKeySimple(r.name))).filter(Boolean).map((e) => String(e.id));
+    dc.starAuto = !!dc.star.length;
+    dc.starClosed = !!wk;
+    dc.starFrase = pickOne(dc.star.length > 1 ? STAR_FRASES_VARIOS : STAR_FRASES);
+  }
+  const dcStar = () => {
+    const pool = dcStarPool();
+    const people = dc.star.map((id) => pool.find((e) => String(e.id) === id)).filter(Boolean).map((e) => ({ name: fullName(e), discord: e.discord }));
+    if (!people.length) return null;
+    const many = people.length > 1;
+    const okFrase = (many ? STAR_FRASES_VARIOS : STAR_FRASES).includes(dc.starFrase);
+    if (!okFrase) dc.starFrase = pickOne(many ? STAR_FRASES_VARIOS : STAR_FRASES);
+    return { people, frase: dc.starFrase };
+  };
   function dcGoBtn() {
     const go = btn("📣 Mensaje para Discord", "ghost emp-dc-go", "Abrir el mensaje de la semana");
     go.addEventListener("click", () => {
@@ -5471,7 +5522,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     const up = dc.items.filter((it) => dcOn(it, "u"));
     const desc = dc.desc.filter((it) => dcOn(it, "d"));
     const bajas = dc.bajas.filter((it) => dcOn(it, "b"));
-    return movDiscordText(up, desc, bajas, dc.sun, up.length ? dc.frase : desc.length ? dc.cierre : dc.cierreB);
+    return movDiscordText(up, desc, bajas, dc.sun, up.length ? dc.frase : desc.length ? dc.cierre : dc.cierreB, dcStar());
   };
   function renderDiscordPreview() {
     const t = dcText();
@@ -5541,6 +5592,9 @@ function setupEmployeesAdminModal({ onChanged }) {
         dc.desc = r.desc;
         dc.bajas = r.bajas;
         dcFrases();
+        await loadStrikeHist().catch(() => {});
+        if (dc.key !== key) return;
+        dcStarInit();
       } catch (err) {
         dc.items = [];
         dc.desc = [];
@@ -5558,7 +5612,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     const nu = dc.items.length, nd = dc.desc.length, nb = dc.bajas.length;
     const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
     info.textContent = `${pl(nu, "ascenso", "ascensos")}, ${pl(nd, "descenso", "descensos")} y ${pl(nb, "baja", "bajas")} · entre el ${ascDM(ascDay(dc.sun, 6))} y el ${ascDM(ascDay(dc.sun, 13))}`;
-    if (!nu && !nd && !nb) list.appendChild(mk("p", "muted emp-empty", "No hay ascensos, descensos ni bajas para esta semana. Se apuntan solos al subir o bajar a alguien desde su ficha y al despedir."));
+    if (!nu && !nd && !nb) list.appendChild(mk("p", "muted emp-empty", "No hay ascensos, descensos ni bajas para esta semana (se apuntan solos al subir o bajar a alguien desde su ficha y al despedir). Puedes mandar solo el reconocimiento al empleado de la semana."));
     if (nu) list.appendChild(mk("div", "emp-dc-group", "📈 Ascensos"));
     for (const it of dc.items) {
       const row = mk("label", "emp-dc-row");
@@ -5603,6 +5657,23 @@ function setupEmployeesAdminModal({ onChanged }) {
       row.append(mk("span", "muted emp-small emp-dc-mot", it.frase + (it.nota ? `  · Nota interna: ${it.nota}` : "")));
       list.appendChild(row);
     }
+    // ⭐ Empleado de la semana
+    list.appendChild(mk("div", "emp-dc-group", "⭐ Empleado de la semana"));
+    const pool = dcStarPool();
+    const srow = mk("div", "emp-dc-row");
+    const sel = dcSelect([["", "— Nadie (no se felicita) —"], ...pool.map((e) => [String(e.id), fullName(e)])], dc.star[0] || "", (v) => {
+      dc.star = v ? [v] : [];
+      dc.starAuto = false;
+      renderDiscordTab();
+    });
+    srow.append(mk("span", "emp-dc-star", "⭐"), sel);
+    if (dc.star.length > 1) srow.append(mk("span", "muted emp-small", `+ ${dc.star.slice(1).map((id) => fullName(pool.find((e) => String(e.id) === id) || {})).join(", ")} (empate en Pagos)`));
+    const st = dcStar();
+    const who = st?.people.find((x) => !x.discord);
+    srow.append(mk("span", "muted emp-small emp-dc-mot", dc.starAuto && dc.star.length ? "El del bono de esta semana en Pagos" : dc.starClosed ? "Elegido a mano" : "Semana sin cerrar en Pagos: elígelo a mano"));
+    if (who) srow.appendChild(noDiscord());
+    if (st) srow.append(mk("span", "muted emp-small emp-dc-mot", st.frase));
+    list.appendChild(srow);
     renderDiscordPreview();
   }
   const dcMove = (n) => {
@@ -5615,6 +5686,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     dc.frase = ascFraseAzar(dc.frase);
     dc.cierre = pickOne(DESC_CIERRES, dc.cierre);
     dc.cierreB = pickOne(BAJAS_CIERRES, dc.cierreB);
+    dc.starFrase = pickOne(dc.star.length > 1 ? STAR_FRASES_VARIOS : STAR_FRASES, dc.starFrase);
     dcFrases();
     renderDiscordTab();
   });

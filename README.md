@@ -272,6 +272,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 35 · 8 de noviembre de 2026 · Empleado de la semana en Discord
+- El mensaje de **📣 Para Discord** añade el **RECONOCIMIENTO SEMANAL** al empleado de la semana, con su rol etiquetado y una felicitación al azar. Sale solo el del bono de esa semana en Pagos; se puede cambiar o quitar («Nadie»). Si no hay movimientos, se puede mandar solo el reconocimiento.
+- Emojis del servidor en el mensaje: águila y manzana en el título, panda saludando en el reconocimiento.
+
 ### Versión 34 · 8 de noviembre de 2026 · Panel del Jefe Tribal
 - Nueva pestaña **📊 Panel** (como el Panel del Jefe de Aguila Motors), solo para el Jefe Tribal: cifras de la semana, gráfica de 8 semanas, avisos, ranking, mejores clientes y plantilla. Sin Informes ni Compraventa, que el Badulaque no tiene. No necesita SQL nuevo.
 
