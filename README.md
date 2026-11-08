@@ -77,10 +77,14 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 
 Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado · Strikes · Rangos · Despedidos**.
 
-- **Listado:** recuadros arriba que también filtran (En plantilla, Con strikes, Para despido 3/3, Sin IBAN, Sin Discord), buscador, orden Por rango / A–Z / Más strikes / Contratación y filtro por **fecha de contratación** (últimos 7 o 30 días, este mes, mes pasado o las fechas que elijas). Cada fila lleva su fecha de contratación (📅; con «~» si no la tiene y se usa su primera semana cerrada). La fecha se pone o se corrige en «Editar datos»; los nuevos la llevan sola. Cada fila: avatar del rango, nombre, rango y %, strikes y ✔/⚠ de Discord e IBAN (o «No cobra»). Al tocar una fila se abre su ficha.
+- **Listado:** recuadros arriba que también filtran (En plantilla, Con strikes, Para despido 3/3, Sin IBAN, Sin Discord, **Sin fecha de ingreso**, **Sin facturar**), buscador, orden Por rango / A–Z / Más strikes / **Antigüedad** y filtro **📅 Fechas** (por ingreso o contratación, desde / hasta). Cada fila: avatar del rango, nombre, rango y %, «📅 Ingreso … · Contratado …», strikes, aviso 💤 de inactividad y ✔/⚠ de Discord e IBAN (o «No cobra»). Al tocar una fila se abre su ficha.
+- **Fechas de cada empleado** (SQL `9_fechas_empleados.sql`): **Ingreso** al Badulaque (su primer día; no cambia aunque le despidan y le readmitan) y **Contratación** (la del contrato actual; al readmitir se pone la del día). Se ponen al dar de alta (por defecto, hoy) y se cambian en «Editar datos». La de contratación no puede ser anterior a la de ingreso. En la ficha sale la antigüedad («8 meses»).
+- **Alta en un solo guardado:** el ID de Discord, el IBAN y las fechas que se ponen al dar de alta se guardan de una vez.
+- **💤 Aviso de inactividad:** con las facturas que el bot copia del Discord del Badulaque (últimos 30 días) se sabe la última factura de cada empleado. En el listado sale «💤 N d» en amarillo (aviso), naranja (alerta) o rojo (grave); en la ficha, la fecha de su última factura. A los recién entrados se les cuenta desde su ingreso. Los días de cada color (3, 5 y 7) los cambia el Jefe Tribal en Rangos (`app_settings` «inact_dias»). El Jefe Tribal no lleva aviso.
 - **Ficha:** «← Listado» y anterior / siguiente; cabecera con avatar grande, rango, strikes y «en el negocio desde» (fecha de alta o, si falta, su primera semana cerrada); **Datos** con «✏️ Editar datos» (nombre, apellido, rango, Discord, IBAN, No cobra) y **Despedir**; **Rango** con la escalera (Reponedor → Cajero → Cajero Principal → Supervisor → Gerente), lo vendido esta semana frente al mínimo y **Subir a… / Bajar a…**; gráfica de las últimas 6 semanas cerradas (más la actual si Pagos la tiene cargada) con la línea del mínimo, media y mejor semana; **Strikes** semana a semana con ＋1, −1, Quitar todos y clic en una semana para ponerlo o quitarlo; **Historial**.
 - **Strikes:** solo los que tienen, separados en «Para despido» y «Con strikes», con cuadritos de las últimas semanas (rojo = strike, punteado = quitado), motivos, ＋1 / −1 / Despedir y el formulario «Poner strike» con motivo. Los de la semana en curso se ven en Pagos (allí el Jefe Tribal también los quita con ✕, los vuelve a poner con ↺ o pone uno a mano).
-- **Rangos:** tabla con la comisión y quién está en cada rango, y arriba **📣 Anuncio de ascensos y descensos**: junta los cambios de rango desde la fecha que elijas (con la nube salen del historial), deja quitar a alguien y **Copiar para Discord** da el anuncio con cada persona y su rango nuevo etiquetados. Si alguien sube y vuelve a bajar en ese tiempo, no sale.
+- **Rangos:** tabla con la comisión y quién está en cada rango, y los días del aviso de inactividad.
+- **📣 Para Discord** (Gerentes y Jefe Tribal, con la nube): el mensaje **«🍎 MOVIMIENTOS DE PERSONAL DE LA SEMANA»** con los ascensos, descensos y bajas de una semana (por defecto la última cerrada; ◀ ▶ para cambiar). Sale del historial: los cambios de rango dados desde el sábado de cierre hasta el sábado siguiente y los despidos de esos días. Cada ascenso lleva una felicitación al azar distinta; cada descenso, su motivo (no llegó al mínimo, baja actividad o sanción); cada baja, una frase según el tipo. Menciona a cada persona y los roles de Discord del rango anterior y del nuevo, y cierra con una frase y la etiqueta de **Jefatura**. Casillas para quitar a alguien, «Mencionar» para quien ya no está en el servidor, 🎲 Otras frases y un solo botón de copiar. Si alguien cambia dos veces, sale una línea de su primer rango al último. Tras subir, bajar o despedir a alguien aparece un botón que lleva al mensaje.
 - **Despedidos:** el registro con Readmitir (y Borrar registro solo para el Jefe Tribal).
 - Un strike quitado no suma ni corta la racha. Los ajustes se guardan en línea (`app_settings`, clave `strike_adj`) y cuentan en Pagos, Totales empleados y Copiar para Discord.
 - Todo cambio (alta, rango, nombre, Discord, IBAN, No cobra, strikes, despido, readmisión) se apunta solo en el historial (tabla `emp_historial`, SQL `supabase/7_historial_empleados.sql`). Si la tabla aún no existe, la ficha lo avisa y la página sigue funcionando.
@@ -101,7 +105,7 @@ Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado �
 
 ## Despidos
 
-- En la ficha del empleado el botón **Despedir** sustituye a Eliminar: pide el motivo (3 strikes, inactividad / abandono, mal comportamiento, renuncia u otro, más un detalle opcional). Si lleva 3 strikes, el motivo ya viene puesto.
+- En la ficha del empleado el botón **Despedir** sustituye a Eliminar: se elige el **tipo de baja** (👋 Baja voluntaria, 💤 Inactividad, ⚠️ 3 strikes, 🚫 Expulsión, 🕊️ CK del personaje, 📋 Otro) y se puede añadir una nota interna (nunca sale en Discord). Se guarda en el motivo («Inactividad: nota»). Con 3/3 strikes sale marcado «3 strikes» y con el aviso de inactividad en rojo, «Inactividad». Los despidos antiguos se clasifican por su texto.
 - El despedido sale de la plantilla y de los pagos, pero queda en el registro **Despedidos** (pestaña de «Gestión de empleados»), con la fecha, el motivo y quién lo despidió. Desde ahí se puede **Readmitir** con su rango, Discord e IBAN.
 - Si añades a alguien con el mismo nombre que un despedido, la página propone readmitirlo.
 - Si un despedido tiene ventas en la semana, sale en el ranking como «Despedido» con $ 0 y sin strike.
@@ -208,7 +212,7 @@ Las contraseñas no están escritas en el código: solo se guarda su huella SHA-
 ├── index.html     Página principal (pestañas y ventanas)
 ├── styles.css     Estilos (tema azul)
 ├── app.js         Caja, procesado de Discord, crafteos, empleados y contraseñas
-├── supabase/      SQL y función del bot para la nube (pegar en orden: 1 a 7)
+├── supabase/      SQL y función del bot para la nube (pegar en orden: 1 a 9)
 ├── favicon.ico
 ├── manifest.webmanifest  Datos de la app web (nombre, colores e iconos)
 ├── iconos/        Icono del Inicio y pantallas de arranque del iPhone
@@ -259,6 +263,14 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 33 · 8 de noviembre de 2026 · Empleados como Aguila Motors
+- Gestión de empleados con todas las novedades de Aguila Motors (v100–v123):
+  - Alta en un solo guardado (Discord, IBAN y fechas a la primera).
+  - Fechas de **ingreso** y **contratación** (SQL `9_fechas_empleados.sql`), antigüedad, recuadro «Sin fecha de ingreso», orden «Antigüedad» y filtro «📅 Fechas». Readmitir pone la contratación del día.
+  - Pestaña **📣 Para Discord** con los movimientos de personal de la semana en un solo mensaje (sustituye al anuncio de la pestaña Rangos de la v30).
+  - **Tipo de baja** al despedir y nota interna.
+  - **💤 Aviso de inactividad** según la última factura, filtro «Sin facturar» y días en Rangos.
 
 ### Versión 32 · 5 de noviembre de 2026 · Fecha de contratación
 - Fecha de contratación en el listado, la ficha y «Editar datos», orden por contratación y filtro por fechas. Los cambios de fecha quedan en el historial.

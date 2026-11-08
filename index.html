@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=32" />
+  <link rel="stylesheet" href="styles.css?v=33" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -460,7 +460,7 @@
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
-    <footer class="app-version">Versión 32 · Fecha de contratación</footer>
+    <footer class="app-version">Versión 33 · Empleados como Aguila Motors</footer>
   </main>
   </div>
 
@@ -596,6 +596,7 @@
         <button type="button" class="emp-tab" data-emp-tab="strikes">⚠️ Strikes <span class="emp-tab-n r" id="emp-tab-n-strikes"></span></button>
         <button type="button" class="emp-tab" data-emp-tab="ranks">🏷️ Rangos</button>
         <button type="button" class="emp-tab" data-emp-tab="fired" id="emp-tab-fired">🚪 Despedidos <span class="emp-tab-n" id="emp-fired-n"></span></button>
+        <button type="button" class="emp-tab" data-emp-tab="discord" id="emp-tab-discord" hidden>📣 Para Discord</button>
       </nav>
 
       <!-- Listado + ficha -->
@@ -608,22 +609,16 @@
               <button type="button" class="emp-chip is-on" data-sort="rank">Por rango</button>
               <button type="button" class="emp-chip" data-sort="az">A–Z</button>
               <button type="button" class="emp-chip" data-sort="strikes">Más strikes</button>
-              <button type="button" class="emp-chip" data-sort="hire">Contratación</button>
+              <button type="button" class="emp-chip" data-sort="seniority">Antigüedad</button>
+              <button type="button" class="emp-chip" id="emp-date-toggle">📅 Fechas</button>
             </div>
-            <select id="emp-hire" class="text-input emp-hire-sel" aria-label="Filtrar por fecha de contratación">
-              <option value="">📅 Contratados: todos</option>
-              <option value="7">📅 Últimos 7 días</option>
-              <option value="30">📅 Últimos 30 días</option>
-              <option value="month">📅 Este mes</option>
-              <option value="prev">📅 Mes pasado</option>
-              <option value="custom">📅 Elegir fechas…</option>
-            </select>
-            <span class="emp-hire-custom" id="emp-hire-custom" hidden>
-              <input id="emp-hire-from" class="text-input emp-date" type="date" aria-label="Contratados desde" />
-              <span class="muted">a</span>
-              <input id="emp-hire-to" class="text-input emp-date" type="date" aria-label="Contratados hasta" />
-            </span>
             <button type="button" id="emp-refresh" class="ghost" title="Volver a cargar">↻</button>
+          </div>
+          <div class="emp-datefilter" id="emp-datefilter" hidden>
+            <label>Fecha de <select id="emp-df-field" class="text-input"><option value="altaAt">ingreso al Badulaque</option><option value="contratadoAt">contratación</option></select></label>
+            <label>Desde <input id="emp-df-from" class="text-input emp-date" type="date" /></label>
+            <label>Hasta <input id="emp-df-to" class="text-input emp-date" type="date" /></label>
+            <button type="button" id="emp-df-clear" class="ghost">Quitar filtro</button>
           </div>
           <div class="emp-list" id="emp-list"></div>
         </div>
@@ -639,6 +634,10 @@
             <select id="emp-new-rank" class="text-input" aria-label="Rango"></select>
             <input id="emp-new-discord" class="text-input emp-discord-new" type="text" inputmode="numeric" placeholder="ID de Discord (opcional)" />
             <input id="emp-new-iban" class="text-input emp-iban-new" type="text" maxlength="9" placeholder="IBAN (ej. J739745)" />
+          </div>
+          <div class="emp-new-dates" id="emp-new-dates">
+            <label>📅 Ingreso al Badulaque <input id="emp-new-alta" class="text-input emp-date" type="date" /></label>
+            <label>📝 Contratación <input id="emp-new-contrato" class="text-input emp-date" type="date" /></label>
           </div>
           <div class="actions">
             <button type="button" class="primary" id="emp-new-add">Añadir</button>
@@ -663,34 +662,31 @@
         <div id="emp-fired-list" class="emp-fired-list"></div>
       </section>
 
+      <!-- Para Discord: movimientos de personal de la semana -->
+      <section class="emp-pane" data-emp-pane="discord" hidden>
+        <div class="emp-dc">
+          <div class="emp-dc-bar">
+            <button type="button" class="ghost" id="emp-dc-prev-w" title="Semana anterior">◀</button>
+            <b id="emp-dc-week"></b>
+            <button type="button" class="ghost" id="emp-dc-next" title="Semana siguiente">▶</button>
+            <span class="muted emp-small" id="emp-dc-info"></span>
+          </div>
+          <div class="emp-dc-list" id="emp-dc-list"></div>
+          <div class="emp-dc-prev-head">
+            <b>Vista previa del mensaje</b>
+            <button type="button" class="ghost" id="emp-dc-frase" title="Cambiar las frases">🎲 Otras frases</button>
+          </div>
+          <pre class="emp-dc-prev" id="emp-dc-prev"></pre>
+          <div class="emp-acts">
+            <button type="button" class="primary" id="emp-dc-copy">📋 Copiar para Discord</button>
+          </div>
+        </div>
+      </section>
+
       <p class="muted emp-status" id="emp-admin-status" role="status"></p>
     </form>
   </dialog>
 
-  <dialog id="fire-dlg">
-    <form method="dialog" class="modal-card fire-card">
-      <header class="modal-head">
-        <h3>Despedir</h3>
-      </header>
-      <p class="fire-who"><b id="fire-name"></b> <span class="muted" id="fire-rank"></span> <span class="fire-strikes" id="fire-strikes"></span></p>
-      <label class="fire-label" for="fire-reason">Motivo</label>
-      <select id="fire-reason" class="text-input">
-        <option value="3 strikes (no llegó al mínimo)">3 strikes (no llegó al mínimo)</option>
-        <option value="Inactividad / abandono">Inactividad / abandono</option>
-        <option value="Mal comportamiento">Mal comportamiento</option>
-        <option value="Renuncia">Renuncia</option>
-        <option value="Otro">Otro</option>
-        <option value="" selected>Elige un motivo…</option>
-      </select>
-      <label class="fire-label" for="fire-detail">Detalle (opcional)</label>
-      <input id="fire-detail" class="text-input" type="text" maxlength="140" placeholder="Ej.: no se presentó en dos semanas" />
-      <p class="muted">Sale de la plantilla y de los pagos, pero queda en el registro de <b>Despedidos</b>. Se puede readmitir.</p>
-      <footer class="actions">
-        <button value="cancel" class="ghost">Cancelar</button>
-        <button value="ok" class="danger" id="fire-ok" disabled>Despedir</button>
-      </footer>
-    </form>
-  </dialog>
 
   <dialog id="access-modal">
     <div class="modal-card access-card">
@@ -765,6 +761,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=32"></script>
+  <script src="app.js?v=33"></script>
 </body>
 </html>

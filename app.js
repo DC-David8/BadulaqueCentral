@@ -319,7 +319,14 @@ const BACKEND_LEGACY_PASSWORD = "0000";
 
 async function addEmployee(payload, password) {
   if (cloudOn()) {
-    await empCloudInsert({ name: payload.name, surname: payload.surname, rank: payload.rank || "" });
+    // Todo en un solo guardado (como Aguila v100): antes Discord e IBAN iban
+    // en guardados aparte, sin esperar, y se podian pisar con la recarga.
+    const row = { name: payload.name, surname: payload.surname, rank: payload.rank || "", discord: payload.discord || "", iban: payload.iban || "" };
+    if (EMP_CLOUD.hasDates) {
+      row.alta_at = payload.altaAt || empToday();
+      row.contratado_at = payload.contratadoAt || row.alta_at;
+    }
+    await empCloudInsert(row);
     return true;
   }
   if (!(await verifyPassword("empleados", password))) {
@@ -423,13 +430,16 @@ async function fireEmployee(e, reason, password) {
 
 async function readmitEmployee(rec, password) {
   if (cloudOn()) {
-    await empCloudPatch(rec.id, { despedido_at: null, despedido_por: null, despedido_motivo: null });
+    // Nuevo contrato (la fecha de ingreso no cambia).
+    await empCloudPatch(rec.id, { despedido_at: null, despedido_por: null, despedido_motivo: null, ...(EMP_CLOUD.hasDates ? { contratado_at: empToday() } : {}) });
     return true;
   }
   await addEmployee({ name: rec.name, surname: rec.surname, rank: rec.rank || "" }, password);
   const full = fullName(rec);
   if (rec.discord) setEmployeeDiscord(full, rec.discord);
   if (rec.iban) setEmployeeIban(full, rec.iban);
+  const dts = loadDatesLocal()[normalizeKeySimple(full)] || {};
+  setEmployeeDatesLocal(full, { a: dts.a || rec.altaAt || "", c: empToday() });
   saveFiredLocal(loadFiredLocal().filter((x) => x.id !== rec.id));
   return true;
 }
@@ -529,22 +539,29 @@ function rankRoleTag(rank) {
 }
 
 // ---------------------------------------------------------------------------
-// Fecha de contratacion. Con la nube es la columna alta_at (SQL 7; los nuevos
-// la llevan sola). Sin ella se guarda en este equipo. Si no hay fecha, se usa
-// la primera semana cerrada en la que sale (aproximada).
+// Fechas de cada empleado (como Aguila Motors v101):
+//   alta_at        = INGRESO al Badulaque (su primer dia; no cambia aunque le
+//                    despidan y le readmitan).
+//   contratado_at  = CONTRATACION (la del contrato actual; al readmitir se
+//                    pone la del dia).
+// Con la nube son columnas de employees (SQL 9); sin ella se guardan en este
+// equipo.
 // ---------------------------------------------------------------------------
 const EMPLOYEE_ALTA_STORAGE_KEY = "badu_employees_alta_v1";
-function loadAltaLocal() {
+function loadDatesLocal() {
   try {
-    return JSON.parse(localStorage.getItem(EMPLOYEE_ALTA_STORAGE_KEY) || "{}") || {};
+    const m = JSON.parse(localStorage.getItem(EMPLOYEE_ALTA_STORAGE_KEY) || "{}") || {};
+    // Hasta la v32 solo habia una fecha (la de contratacion): vale para las dos.
+    for (const k of Object.keys(m)) if (typeof m[k] === "string") m[k] = { a: m[k], c: m[k] };
+    return m;
   } catch {
     return {};
   }
 }
-function setEmployeeAltaLocal(fullNameStr, day) {
-  const m = loadAltaLocal();
+function setEmployeeDatesLocal(fullNameStr, dates) {
+  const m = loadDatesLocal();
   const k = normalizeKeySimple(fullNameStr);
-  if (day) m[k] = day;
+  if (dates && (dates.a || dates.c)) m[k] = { a: dates.a || "", c: dates.c || "" };
   else delete m[k];
   try {
     localStorage.setItem(EMPLOYEE_ALTA_STORAGE_KEY, JSON.stringify(m));
@@ -561,92 +578,416 @@ function localDay(v) {
   if (Number.isNaN(d.getTime())) return "";
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+const empToday = () => localDay(new Date().toISOString());
 const fmtDayEs = (day) => (day ? `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}` : "");
-// { day: "AAAA-MM-DD", exact: true|false } o null.
-function hireDateOf(e) {
-  const full = fullName(e);
-  let day = "";
-  if (cloudOn()) day = localDay(EMP_CLOUD.list.find((x) => String(x.id) === String(e.id))?.altaAt);
-  else day = loadAltaLocal()[normalizeKeySimple(full)] || "";
-  if (day) return { day, exact: true };
-  const w = STRIKE_HIST.slice().reverse().find((x) => strikeRowIn(x, e.id, full));
-  return w ? { day: String(w.semana).slice(0, 10), exact: false } : null;
+const empDate = (iso) => fmtDayEs(localDay(iso));
+// "3 meses", "1 año y 2 meses", "12 días"...
+function empSeniority(iso) {
+  const s = localDay(iso);
+  if (!s) return "";
+  const a = new Date(`${s}T12:00:00`);
+  const b = new Date(`${empToday()}T12:00:00`);
+  const days = Math.round((b - a) / 86400000);
+  if (days < 0) return "";
+  if (days < 31) return `${days} ${days === 1 ? "día" : "días"}`;
+  let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  if (b.getDate() < a.getDate()) months--;
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  if (!y) return `${m} ${m === 1 ? "mes" : "meses"}`;
+  return `${y} ${y === 1 ? "año" : "años"}${m ? ` y ${m} ${m === 1 ? "mes" : "meses"}` : ""}`;
 }
-
-// ---------------------------------------------------------------------------
-// Ascensos y descensos para anunciar. Con la nube salen del historial
-// (emp_historial, tipo "rango"); sin ella, de un registro en este equipo.
-// ---------------------------------------------------------------------------
-const RANK_LOG_KEY = "badu_rank_log_v1";
-function rankLogLocal(e, from, to) {
-  try {
-    const list = JSON.parse(localStorage.getItem(RANK_LOG_KEY) || "[]");
-    list.push({ id: String(e.id ?? ""), name: fullName(e), from: from || "", to: to || "", at: new Date().toISOString() });
-    localStorage.setItem(RANK_LOG_KEY, JSON.stringify(list.slice(-300)));
-  } catch {
-    // sin almacenamiento
+// Se pueden guardar las dos fechas: sin la nube siempre; con ella, con el SQL 9.
+const empHasDates = () => !cloudOn() || !!EMP_CLOUD.hasDates;
+// { altaAt, contratadoAt } (AAAA-MM-DD o "").
+function empDatesOf(e) {
+  if (cloudOn()) {
+    const r = EMP_CLOUD.list.find((x) => String(x.id) === String(e.id));
+    return { altaAt: r?.altaAt || "", contratadoAt: r?.contratadoAt || "" };
   }
+  const d = loadDatesLocal()[normalizeKeySimple(fullName(e))] || {};
+  return { altaAt: d.a || "", contratadoAt: d.c || "" };
 }
 
-async function rankChangesSince(sinceIso) {
-  if (!cloudOn()) {
-    let list = [];
+// ---------------------------------------------------------------------------
+// Aviso de inactividad (como Aguila Motors v123). Con las facturas que el bot
+// copia del Discord del Badulaque (tabla discord_log) se sabe la ultima
+// factura de cada empleado (cobrador del datafono). Se miran los ultimos 30
+// dias; los dias de cada color los cambia el Jefe Tribal (app_settings
+// "inact_dias").
+// ---------------------------------------------------------------------------
+const INACT_DEFAULT = { aviso: 3, alerta: 5, grave: 7 };
+const INACT_VENTANA = 30; // dias hacia atras que se leen
+const INACT = { ok: false, at: 0, last: new Map(), desde: 0, dias: { ...INACT_DEFAULT }, loading: null };
+async function inactLoad(force = false) {
+  if (!cloudOn() || !isJefe() || !cloud.session) return false;
+  if (!force && INACT.ok && Date.now() - INACT.at < 5 * 60000) return true;
+  if (INACT.loading) return INACT.loading;
+  INACT.loading = (async () => {
     try {
-      list = JSON.parse(localStorage.getItem(RANK_LOG_KEY) || "[]");
+      const desde = Date.now() - INACT_VENTANA * 86400000;
+      const rows = [];
+      for (let off = 0; ; off += 1000) {
+        const part = await cloud.req(`/rest/v1/discord_log?select=id,ts,content,embeds&ts=gte.${encodeURIComponent(new Date(desde).toISOString())}&order=ts.asc,id.asc&limit=1000&offset=${off}`);
+        if (!Array.isArray(part)) break;
+        rows.push(...part);
+        if (part.length < 1000) break;
+      }
+      const last = new Map();
+      for (const r of rows) {
+        const txt = dlogMessageText(r);
+        if (!txt) continue;
+        let res;
+        try {
+          res = processText(txt);
+        } catch {
+          continue;
+        }
+        const t = +new Date(r.ts);
+        for (const inv of Object.values(res.invoices || {})) {
+          if (!inv.issuer) continue;
+          const k = normalizeKeySimple(inv.issuer);
+          if (!last.has(k) || last.get(k) < t) last.set(k, t);
+        }
+      }
+      let dias = { ...INACT_DEFAULT };
+      try {
+        const st = await cloud.req("/rest/v1/app_settings?select=value&key=eq.inact_dias");
+        if (st?.[0]?.value) dias = { ...dias, ...st[0].value };
+      } catch {
+        // sin ajustes: los de siempre
+      }
+      Object.assign(INACT, { ok: true, at: Date.now(), last, desde, dias });
     } catch {
-      list = [];
+      // sin acceso a las facturas: no se avisa
+    } finally {
+      INACT.loading = null;
     }
-    return list.filter((x) => String(x.at) >= sinceIso).map((x) => ({ ...x, from: canonRank(x.from), to: canonRank(x.to) }));
+    return INACT.ok;
+  })();
+  return INACT.loading;
+}
+async function inactSaveDias(d) {
+  const v = { aviso: Math.max(1, Math.round(d.aviso)), alerta: Math.max(1, Math.round(d.alerta)), grave: Math.max(1, Math.round(d.grave)) };
+  if (!(v.aviso < v.alerta && v.alerta < v.grave)) throw new Error("Los días tienen que ir de menos a más (aviso < alerta < grave).");
+  if (v.grave > INACT_VENTANA) throw new Error(`El máximo es ${INACT_VENTANA} días.`);
+  if (!cloudOn() || !AUTH.tribal) throw new Error("Solo el Jefe Tribal puede cambiar los días.");
+  await cloud.req("/rest/v1/app_settings?on_conflict=key", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: [{ key: "inact_dias", value: v }],
+  });
+  INACT.dias = v;
+}
+// { days, last, level (0-3), more } · more = no facturo en toda la ventana.
+// El Jefe Tribal no lleva aviso.
+function inactOf(e) {
+  if (!INACT.ok || !e || isOwnerRank(e.rank)) return null;
+  const now = Date.now();
+  const t = INACT.last.get(normalizeKeySimple(fullName(e)));
+  const altaDay = empDatesOf(e).altaAt;
+  const alta = altaDay ? +new Date(`${altaDay}T00:00:00`) : 0;
+  let days;
+  let more = false;
+  if (t) days = Math.floor((now - t) / 86400000);
+  else {
+    const base = Math.max(INACT.desde, alta);
+    days = Math.floor((now - base) / 86400000);
+    more = base === INACT.desde;
   }
-  const rows = await cloud.req(`/rest/v1/emp_historial?select=employee_id,at,texto&tipo=eq.rango&at=gte.${encodeURIComponent(sinceIso)}&order=at.asc&limit=500`);
+  const D = INACT.dias;
+  const level = days >= D.grave ? 3 : days >= D.alerta ? 2 : days >= D.aviso ? 1 : 0;
+  return { days, last: t || null, level, more };
+}
+function inactText(x) {
+  if (!x) return "";
+  if (x.more) return `Sin facturar en más de ${INACT_VENTANA} días`;
+  if (!x.last) return x.days ? `Sin facturar desde que entró (hace ${x.days} ${x.days === 1 ? "día" : "días"})` : "Entró hoy";
+  return x.days === 0 ? "Ha facturado hoy" : `Sin facturar desde hace ${x.days} ${x.days === 1 ? "día" : "días"}`;
+}
+// 💤 Etiqueta de inactividad (solo a partir del primer aviso).
+function inactChip(e, always = false) {
+  const x = inactOf(e);
+  if (!x || (!x.level && !always)) return null;
+  const c = document.createElement("span");
+  c.className = `emp-inact l${x.level}`;
+  c.textContent = x.level ? `💤 ${x.more ? `+${INACT_VENTANA}` : x.days} d` : "✅ Activo";
+  c.title = `${inactText(x)}${x.last ? ` · última factura ${dlogDate(new Date(x.last).toISOString())}` : ""}`;
+  return c;
+}
+
+// ---------------------------------------------------------------------------
+// Movimientos de personal de la semana para Discord (como Aguila Motors
+// v117-v121): ascensos, descensos y bajas en UN solo mensaje. Los ascensos y
+// descensos salen del historial (emp_historial, tipo "rango"); las bajas, de
+// los despedidos de esa semana. Cierra con una frase y la etiqueta de Jefatura.
+// ---------------------------------------------------------------------------
+const ASC_MOTIVOS = [
+  "por su excelente labor y compromiso con el Badulaque. 🏆",
+  "por su gran rendimiento esta semana. 🛒",
+  "por su constancia y dedicación. 💪",
+  "por estar a la altura y dar siempre el máximo. 🔥",
+  "por tener la caja siempre cuadrada al céntimo. 💵",
+  "por no soltar el datáfono ni un solo turno. 💳",
+  "por atender a cada cliente con una sonrisa. 😄",
+  "por ser de los que más venden y mejor atienden. 💰",
+  "por su seriedad y profesionalidad en el mostrador. 🤝",
+  "por tirar del Badulaque cuando más falta hacía. 🍎",
+  "por tener los estantes siempre llenos y en orden. 📦",
+  "por despachar más rápido que nadie. ⚡",
+  "por ser un ejemplo para sus compañeros de turno. ⭐",
+  "por su esfuerzo diario detrás del mostrador. 🧾",
+  "por ponerle turbo a las ventas de la tienda. 📈",
+  "por vender rascas como nadie. 🎰",
+];
+const ASC_FRASES = [
+  "Más rango, más responsabilidad: que se note en cada venta. 🛒",
+  "El Badulaque crece con gente como vosotros. ¡A por más! 🍎",
+  "Caja cuadrada y estantes llenos: ¡enhorabuena por el ascenso! 🏁",
+  "Cada cliente que sale contento lleva vuestra firma. ¡Seguid así! 😄",
+  "Aquí nadie regala nada: cada ascenso se gana detrás del mostrador. 🏆",
+  "Nuevo rango, mismas ganas: a dejar el listón del Badulaque bien alto. 📈",
+  "Buen trabajo, mejor equipo. ¡Felicidades y a seguir despachando! 🧾",
+  "El orgullo del Badulaque sois vosotros. ¡Que no pare la caja! 💵",
+  "De reponer estantes al siguiente escalón: el esfuerzo tiene premio. 📦",
+  "Turno a turno se llega lejos. ¡Enhorabuena a los ascendidos! ⭐",
+];
+const pickOne = (arr, prev = "") => {
+  const pool = arr.filter((x) => x !== prev);
+  return pool[Math.floor(Math.random() * pool.length)] || arr[0];
+};
+const ascFraseAzar = (prev = "") => pickOne(ASC_FRASES, prev);
+// Una felicitacion distinta para cada uno (sin repetir mientras haya).
+function ascMotivosAzar(n) {
   const out = [];
-  for (const r of rows || []) {
-    const m = String(r.texto || "").match(/(?:Ascendido|Bajado) de (.+?) a (.+)$/);
-    if (!m) continue;
-    const e = EMP_CLOUD.list.find((x) => String(x.id) === String(r.employee_id));
-    if (!e || e.firedAt) continue;
-    const from = /^sin rango$/i.test(m[1]) ? "" : canonRank(m[1]);
-    const to = /^sin rango$/i.test(m[2]) ? "" : canonRank(m[2]);
-    out.push({ id: e.id, name: fullName(e), from, to, at: r.at });
+  let bag = [];
+  for (let i = 0; i < n; i++) {
+    if (!bag.length) bag = [...ASC_MOTIVOS].sort(() => Math.random() - 0.5);
+    out.push(bag.pop());
   }
   return out;
 }
-
-// Un cambio por persona: del primer rango al ultimo (si vuelve al mismo, no sale).
-function netRankChanges(list) {
-  const by = new Map();
-  for (const c of list) {
-    const k = c.id || normalizeKeySimple(c.name);
-    const prev = by.get(k);
-    by.set(k, prev ? { ...prev, name: c.name, to: c.to, at: c.at } : { ...c });
+// Tipo de baja: se elige al despedir y se guarda al principio del motivo
+// ("Inactividad: nota"). Las notas nunca salen en el mensaje de Discord.
+const BAJA_TIPOS = [
+  { k: "voluntaria", e: "👋", label: "Baja voluntaria", hint: "Se va del Badulaque por decisión propia" },
+  { k: "inactividad", e: "💤", label: "Inactividad", hint: "Deja de aparecer por la tienda" },
+  { k: "strikes", e: "⚠️", label: "3 strikes", hint: "No llegó al mínimo de ventas" },
+  { k: "expulsion", e: "🚫", label: "Expulsión", hint: "Conducta, normas o sanción" },
+  { k: "ck", e: "🕊️", label: "CK del personaje", hint: "El personaje fallece" },
+  { k: "otro", e: "📋", label: "Otro", hint: "Cualquier otro motivo" },
+];
+const BAJA_FRASES = {
+  voluntaria: [
+    "deja el Badulaque por decisión propia. ¡Gracias por cada turno y mucha suerte en tu camino! 🤝",
+    "cuelga el delantal del Badulaque. ¡Gracias por tu esfuerzo, las puertas de la tienda quedan abiertas! 🍎",
+    "se despide de la tienda. ¡Gracias por todo lo aportado y suerte en lo que venga! 🍀",
+    "nos deja por voluntad propia. ¡Gracias por tu trabajo detrás del mostrador, compañero! 🛒",
+    "pone rumbo a nuevos caminos. ¡Gracias por formar parte del Badulaque Central! 🛣️",
+    "entrega las llaves de la caja. ¡Gracias por cada venta y por dejar el listón tan alto! 🏁",
+  ],
+  inactividad: ["causa baja por inactividad.", "causa baja por falta de actividad en la tienda.", "causa baja por inactividad prolongada."],
+  strikes: ["sale del Badulaque tras acumular 3 strikes sin llegar al mínimo de ventas.", "queda fuera de la tienda al sumar 3 strikes seguidos."],
+  expulsion: ["queda expulsado del Badulaque Central por incumplir las normas de la tienda.", "queda fuera de la tienda por conducta inapropiada."],
+  ck: [
+    "nos ha dejado para siempre. Descansa en paz, compañero; tu delantal seguirá colgado en la tienda. 🕯️",
+    "ha fallecido. Todo el Badulaque Central acompaña a su familia y amigos en este momento tan duro. 🕯️",
+    "se ha ido. Hoy la caja suena más bajo. Descanse en paz. 🖤",
+    "ya no está con nosotros. Gracias por cada turno; siempre serás parte del Badulaque. 🖤",
+  ],
+  otro: ["deja de formar parte del Badulaque."],
+};
+const DESC_MOTIVOS = [
+  { k: "minimo", label: "No llegó al mínimo", f: ["por no alcanzar el mínimo de ventas de la semana.", "al quedarse por debajo del mínimo semanal de ventas."] },
+  { k: "actividad", label: "Baja actividad", f: ["por su baja actividad en la tienda.", "por falta de presencia en los turnos."] },
+  { k: "sancion", label: "Sanción", f: ["como sanción por incumplir las normas de la tienda.", "por una sanción interna de la Jefatura."] },
+];
+const DESC_CIERRES = [
+  "Cada semana es una nueva oportunidad para volver a subir. 💪",
+  "El rango se recupera turno a turno detrás del mostrador. 🛒",
+  "Aquí cada rango se recupera con trabajo. ¡A por ello! 🍎",
+  "Una mala semana no define a nadie. ¡A volver a subir! ⭐",
+];
+const BAJAS_CIERRES = ["Gracias a todos por vuestro trabajo en el Badulaque. 🍎", "El Badulaque sigue abierto. ¡A seguir despachando! 🛒"];
+const bajaTipo = (k) => BAJA_TIPOS.find((t) => t.k === k) || BAJA_TIPOS[BAJA_TIPOS.length - 1];
+// Motivo guardado → { tipo, nota }. Los despidos antiguos se clasifican por su texto.
+function parseBaja(motivo) {
+  const m = String(motivo || "").trim();
+  for (const t of BAJA_TIPOS) {
+    if (normalizeKeySimple(m.slice(0, t.label.length)) === normalizeKeySimple(t.label)) return { tipo: t.k, nota: m.slice(t.label.length).replace(/^\s*[:·-]\s*/, "") };
   }
-  return [...by.values()]
-    .filter((c) => c.from !== c.to)
-    .map((c) => ({ ...c, up: rankOrder(c.to) > rankOrder(c.from) }))
-    .sort((a, b) => rankOrder(b.to) - rankOrder(a.to) || a.name.localeCompare(b.name, "es"));
+  const k = normalizeKeySimple(m);
+  const tipo = /\bck\b|fallec|muri|muert/.test(k) ? "ck"
+    : /strike/.test(k) ? "strikes"
+    : /inactiv|abandon|no aparece|no viene|desaparec|ausen/.test(k) ? "inactividad"
+    : /volunt|renunc|dimit|se va|se fue|por su cuenta|decision propia/.test(k) ? "voluntaria"
+    : /expuls|conduct|comportamiento|sancion|norma|robo|toxic|falta de respeto|insult/.test(k) ? "expulsion"
+    : "otro";
+  return { tipo, nota: m };
+}
+const bajaMotivoText = (tipo, nota) => `${bajaTipo(tipo).label}${nota ? `: ${nota}` : ""}`;
+// "⬆️ Ascendido de Cajero a Cajero Principal" → { up, from, to } (acepta nombres antiguos).
+function parseRankLog(texto) {
+  const m = String(texto || "").match(/(Ascendido|Bajado) de (.+)$/);
+  if (!m) return null;
+  const known = (t) => {
+    if (/^sin rango$/i.test(t.trim())) return "";
+    const r = canonRank(t);
+    return RANKS.some((x) => x.label === r) ? r : null;
+  };
+  const parts = m[2].split(" a ");
+  for (let i = 1; i < parts.length; i++) {
+    const from = known(parts.slice(0, i).join(" a "));
+    const to = known(parts.slice(i).join(" a "));
+    if (from !== null && to !== null) return { up: m[1] === "Ascendido", from, to };
+  }
+  return null;
+}
+// Semanas de domingo a sabado (las mismas de Pagos y los strikes).
+const ascDay = (d, add = 0) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + add);
+const ascSunday = (d) => ascDay(d, -d.getDay());
+const ascDM = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+// Semana que se anuncia por defecto: la ultima cerrada (los cambios se dan al cerrarla).
+const ascDefaultWeek = () => ascSunday(ascDay(new Date(), -7));
+// Cambios de rango de la semana que empieza el domingo `sun`: los dados desde
+// su sabado de cierre hasta el sabado siguiente. Si alguien cambia dos veces
+// se junta en uno (de su primer rango al ultimo).
+async function rankMovesWeek(sun) {
+  const a = ascDay(sun, 6).toISOString();
+  const b = ascDay(sun, 14).toISOString();
+  const rows = await cloud.req(`/rest/v1/emp_historial?select=employee_id,at,texto&tipo=eq.rango&at=gte.${encodeURIComponent(a)}&at=lt.${encodeURIComponent(b)}&order=at.asc`);
+  const by = new Map();
+  for (const r of rows || []) {
+    const p = parseRankLog(r.texto);
+    if (!p) continue;
+    const cur = by.get(String(r.employee_id));
+    if (cur) cur.to = p.to;
+    else by.set(String(r.employee_id), { id: String(r.employee_id), from: p.from, to: p.to, at: r.at });
+  }
+  return [...by.values()];
+}
+const discordOf = (e) => String(e?.discord || "").replace(/\D/g, "");
+async function ascensosSemana(sun, people) {
+  const out = [];
+  for (const it of await rankMovesWeek(sun)) {
+    if (rankOrder(it.to) <= rankOrder(it.from)) continue;
+    const e = people.find((x) => String(x.id) === it.id);
+    if (!e || e.firedAt) continue;
+    out.push({ ...it, name: fullName(e), discord: discordOf(e) });
+  }
+  return out.sort((p, q) => rankOrder(q.to) - rankOrder(p.to) || p.name.localeCompare(q.name, "es"));
+}
+// Descensos y bajas (despidos) de la semana `sun`.
+async function descensosSemana(sun, people) {
+  const a = ascDay(sun, 6), b = ascDay(sun, 14);
+  const inWeek = (iso) => { const t = new Date(iso); return t >= a && t < b; };
+  const bajas = people
+    .filter((f) => f.firedAt && inWeek(f.firedAt))
+    .map((f) => ({ id: String(f.id), name: fullName(f), rank: f.rank, discord: discordOf(f), ...parseBaja(f.firedReason) }))
+    .sort((p, q) => BAJA_TIPOS.findIndex((t) => t.k === p.tipo) - BAJA_TIPOS.findIndex((t) => t.k === q.tipo) || p.name.localeCompare(q.name, "es"));
+  const gone = new Set(bajas.map((x) => x.id));
+  const desc = [];
+  for (const it of await rankMovesWeek(sun)) {
+    if (gone.has(it.id) || rankOrder(it.to) >= rankOrder(it.from)) continue;
+    const e = people.find((x) => String(x.id) === it.id);
+    if (!e || e.firedAt) continue;
+    desc.push({ ...it, name: fullName(e), discord: discordOf(e), motivo: "minimo" });
+  }
+  desc.sort((p, q) => rankOrder(q.from) - rankOrder(p.from) || p.name.localeCompare(q.name, "es"));
+  return { desc, bajas };
+}
+// Un solo mensaje con ascensos, descensos y bajas (los apartados vacios no salen).
+function movDiscordText(up, desc, bajas, sun, cierre) {
+  if (!up.length && !desc.length && !bajas.length) return "";
+  const role = (r) => rankRoleTag(r);
+  const who = (it) => (it.discord && it.mention !== false ? `<@${it.discord}>` : `**${it.name}**`);
+  const parts = [];
+  if (up.length) parts.push(`## 📈 Ascensos\n${up.map((it) => `⬆️ ${who(it)} pasa de ${role(it.from)} a ${role(it.to)} ${it.motivo}`).join("\n")}`);
+  if (desc.length) parts.push(`## 📉 Descensos\n${desc.map((it) => `⬇️ ${who(it)} pasa de ${role(it.from)} a ${role(it.to)} ${it.frase}`).join("\n")}`);
+  if (bajas.length) parts.push(`## 🚪 Bajas del Badulaque\n${bajas.map((it) => `${bajaTipo(it.tipo).e} ${who(it)}${it.rank ? ` (${role(it.rank)})` : ""} ${it.frase}`).join("\n")}`);
+  return `# 🍎 MOVIMIENTOS DE PERSONAL DE LA SEMANA\n-# Semana del ${ascDM(sun)} al ${ascDM(ascDay(sun, 6))} · Badulaque Central\n\n${parts.join("\n\n")}\n\n${cierre}\n-# — ${ROLE_TAG_JEFATURA} · Badulaque Central`;
 }
 
-function rankAnnouncementText(changes) {
-  const who = (c) => {
-    const d = getEmployeeDiscord(c.name);
-    return d ? `<@${d}>` : `**${c.name}**`;
-  };
-  const ups = changes.filter((c) => c.up);
-  const downs = changes.filter((c) => !c.up);
-  const lines = ["# 📣 Ascensos y descensos", "-# Badulaque Central 🦅🍎", ""];
-  if (ups.length) {
-    lines.push("## ⬆️ Ascensos");
-    for (const c of ups) lines.push(`> 🎉 ${who(c)} asciende a ${rankRoleTag(c.to)}${c.from ? ` *(antes ${c.from})*` : ""}`);
-    lines.push("");
-  }
-  if (downs.length) {
-    lines.push("## ⬇️ Descensos");
-    for (const c of downs) lines.push(`> ${who(c)} pasa a ${rankRoleTag(c.to)}${c.from ? ` *(antes ${c.from})*` : ""}`);
-    lines.push("");
-  }
-  lines.push(ups.length ? "-# ¡Enhorabuena a los ascendidos y a seguir dándolo todo! 💪" : "-# ¡A seguir dándolo todo! 💪");
-  lines.push(ROLE_TAG_TRABAJADORES);
-  return lines.join("\n");
+// Ventana para despedir: tipo de baja + nota opcional. Devuelve el motivo
+// listo para guardar ("Inactividad: no aparece desde el 20/10") o null.
+function askBaja(label, suggest = "", extra = "") {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog");
+    dlg.className = "baja-dlg";
+    const form = document.createElement("form");
+    form.method = "dialog";
+    form.className = "modal-card";
+    const h = document.createElement("h3");
+    h.textContent = `🚪 Despedir a ${label}`;
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = "Sale de la plantilla y de los pagos, pierde el acceso a la página y queda en el registro de Despedidos. Se puede readmitir. ¿Por qué se va?";
+    const grid = document.createElement("div");
+    grid.className = "baja-tipos";
+    BAJA_TIPOS.forEach((t) => {
+      const l = document.createElement("label");
+      l.className = "baja-tipo";
+      const r = document.createElement("input");
+      r.type = "radio";
+      r.name = "baja";
+      r.value = t.k;
+      if (t.k === suggest) r.checked = true;
+      const txt = document.createElement("span");
+      const b = document.createElement("b");
+      b.textContent = `${t.e} ${t.label}`;
+      const sm = document.createElement("small");
+      sm.textContent = t.hint;
+      txt.append(b, sm);
+      l.append(r, txt);
+      grid.append(l);
+    });
+    const nl = document.createElement("label");
+    nl.className = "baja-nota";
+    nl.textContent = "Nota (opcional, no sale en Discord)";
+    const nota = document.createElement("input");
+    nota.type = "text";
+    nota.className = "text-input";
+    nota.maxLength = 160;
+    nota.placeholder = "Ej. no aparece desde el 20/10";
+    nl.append(nota);
+    const acts = document.createElement("div");
+    acts.className = "emp-acts";
+    const ok = document.createElement("button");
+    ok.type = "submit";
+    ok.className = "danger";
+    ok.textContent = "Despedir";
+    const no = document.createElement("button");
+    no.type = "button";
+    no.className = "ghost";
+    no.textContent = "Cancelar";
+    acts.append(ok, no);
+    form.append(h, p);
+    if (extra) {
+      const x = document.createElement("p");
+      x.className = "baja-extra";
+      x.textContent = extra;
+      form.append(x);
+    }
+    form.append(grid, nl, acts);
+    dlg.append(form);
+    let result = null;
+    form.addEventListener("submit", (ev) => {
+      const sel = form.querySelector('input[name="baja"]:checked');
+      if (!sel) {
+        ev.preventDefault();
+        alert("Elige el tipo de baja.");
+        return;
+      }
+      result = bajaMotivoText(sel.value, nota.value.trim());
+    });
+    no.addEventListener("click", () => dlg.close());
+    dlg.addEventListener("close", () => {
+      dlg.remove();
+      resolve(result);
+    });
+    (document.querySelector("dialog[open]") || document.body).appendChild(dlg);
+    dlg.showModal();
+  });
 }
 
 // ===================== Reglas de la semana =====================
@@ -1199,7 +1540,8 @@ const empFromRow = (r) => ({
   firedAt: r.despedido_at || "",
   firedBy: String(r.despedido_por || ""),
   firedReason: String(r.despedido_motivo || ""),
-  altaAt: r.alta_at || "",
+  altaAt: localDay(r.alta_at),
+  contratadoAt: localDay(r.contratado_at),
 });
 
 // Apunta en el historial lo que cambia entre dos versiones del mismo empleado.
@@ -1223,12 +1565,15 @@ function empLogDiff(before, next) {
   if (!!before.noPay !== !!next.noPay) empLog(id, "datos", next.noPay ? "💸 Marcado como «No cobra»" : "💸 Vuelve a cobrar la nómina");
   if ((before.discord || "") !== (next.discord || "")) empLog(id, "datos", next.discord ? "🔗 Discord cambiado" : "🔗 Discord quitado");
   if ((before.iban || "") !== (next.iban || "")) empLog(id, "datos", `🏦 IBAN: ${next.iban || "quitado"}`);
-  if (localDay(before.altaAt) !== localDay(next.altaAt)) empLog(id, "datos", `📅 Fecha de contratación: ${fmtDayEs(localDay(next.altaAt)) || "quitada"}`);
+  if ((before.altaAt || "") !== (next.altaAt || "")) empLog(id, "datos", `📅 Fecha de ingreso al Badulaque: ${empDate(next.altaAt) || "sin fecha"}`);
+  if ((before.contratadoAt || "") !== (next.contratadoAt || "")) empLog(id, "datos", `📝 Fecha de contratación: ${empDate(next.contratadoAt) || "sin fecha"}`);
 }
 
 async function empCloudLoad() {
   const rows = await cloud.req("/rest/v1/employees?select=*&order=surname.asc,name.asc&limit=1000");
   EMP_CLOUD.list = (rows || []).map(empFromRow).filter((e) => e.name && e.surname);
+  // Con el SQL 9 la tabla tiene la fecha de contratacion: se guardan las dos fechas.
+  EMP_CLOUD.hasDates = (rows || []).some((r) => "contratado_at" in r);
   EMP_CLOUD.ok = true;
   return EMP_CLOUD.list;
 }
@@ -4089,57 +4434,54 @@ function setupEmployeesAdminModal({ onChanged }) {
     { k: "fire", label: `Para despido (${STRIKE_MAX}/${STRIKE_MAX})`, test: (e) => strikesOf(e) >= STRIKE_MAX, cls: "r", cloud: true },
     { k: "iban", label: "Sin IBAN", test: (e) => !getEmployeeIban(fullName(e)) && !isEmployeeNoPay(fullName(e)), cls: "w" },
     { k: "discord", label: "Sin Discord", test: (e) => !getEmployeeDiscord(fullName(e)), cls: "w" },
+    { k: "nodates", label: "Sin fecha de ingreso", test: (e) => !empDatesOf(e).altaAt, cls: "w", dates: true },
+    { k: "inact", label: "Sin facturar", test: (e) => (inactOf(e)?.level || 0) >= 1, cls: "w", cloud: true },
   ];
 
-  // Rango de fechas de contratacion elegido: { from, to } (AAAA-MM-DD) o null.
-  const hireSel = byId("emp-hire");
-  const hireFrom = byId("emp-hire-from");
-  const hireTo = byId("emp-hire-to");
-  function hireRange() {
-    const v = hireSel?.value || "";
-    if (!v) return null;
-    const today = localDay(new Date().toISOString());
-    const back = (n) => localDay(new Date(Date.now() - n * 86400000).toISOString());
-    if (v === "7") return { from: back(6), to: today };
-    if (v === "30") return { from: back(29), to: today };
-    if (v === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
-    if (v === "prev") {
-      const d = new Date();
-      const p = new Date(d.getFullYear(), d.getMonth() - 1, 1);
-      const last = new Date(d.getFullYear(), d.getMonth(), 0);
-      return { from: localDay(p.toISOString()), to: localDay(last.toISOString()) };
-    }
-    if (v === "custom") return { from: hireFrom.value || "0000-00-00", to: hireTo.value || "9999-99-99" };
-    return null;
-  }
-  function inHireRange(e) {
-    const r = hireRange();
-    if (!r) return true;
-    const h = hireDateOf(e);
-    return !!h && h.day >= r.from && h.day <= r.to;
-  }
+  // Filtro por fechas (ingreso o contratacion) entre "desde" y "hasta".
+  const dateFilter = () => {
+    const box = byId("emp-datefilter");
+    if (!box || box.hidden) return null;
+    const from = byId("emp-df-from").value;
+    const to = byId("emp-df-to").value;
+    if (!from && !to) return null;
+    return { field: byId("emp-df-field").value, from, to };
+  };
 
   function shownList() {
     const q = normalizeKeySimple(searchInput.value || "");
     const f = FILTERS.find((x) => x.k === filter) || FILTERS[0];
-    let out = employees.filter((e) => f.test(e) && inHireRange(e) && (!q || normalizeKeySimple(`${e.name} ${e.surname} ${e.rank || ""}`).includes(q)));
-    if (sortBy === "az") out = out.slice().sort((x, y) => fullName(x).localeCompare(fullName(y), "es", { sensitivity: "base" }));
+    let out = employees.filter((e) => f.test(e) && (!q || normalizeKeySimple(`${e.name} ${e.surname} ${e.rank || ""}`).includes(q)));
+    const df = dateFilter();
+    if (df) out = out.filter((e) => {
+      const v = empDatesOf(e)[df.field] || "";
+      return !!v && (!df.from || v >= df.from) && (!df.to || v <= df.to);
+    });
+    if (sortBy === "seniority") out = out.slice().sort((x, y) => (empDatesOf(x).altaAt || "9999").localeCompare(empDatesOf(y).altaAt || "9999") || byRankThenName(x, y));
+    else if (sortBy === "az") out = out.slice().sort((x, y) => fullName(x).localeCompare(fullName(y), "es", { sensitivity: "base" }));
     else if (sortBy === "strikes") out = out.slice().sort((x, y) => strikesOf(y) - strikesOf(x) || byRankThenName(x, y));
-    else if (sortBy === "hire") out = out.slice().sort((x, y) => (hireDateOf(y)?.day || "").localeCompare(hireDateOf(x)?.day || "") || byRankThenName(x, y));
+    if (filter === "inact") out = out.slice().sort((x, y) => (inactOf(y)?.days || 0) - (inactOf(x)?.days || 0));
     return out;
   }
-  hireSel?.addEventListener("change", () => {
-    byId("emp-hire-custom").hidden = hireSel.value !== "custom";
+  byId("emp-date-toggle")?.addEventListener("click", () => {
+    const box = byId("emp-datefilter");
+    box.hidden = !box.hidden;
+    byId("emp-date-toggle").classList.toggle("is-on", !box.hidden);
     renderList();
   });
-  hireFrom?.addEventListener("change", renderList);
-  hireTo?.addEventListener("change", renderList);
+  for (const id of ["emp-df-field", "emp-df-from", "emp-df-to"]) byId(id)?.addEventListener("change", () => renderList());
+  byId("emp-df-clear")?.addEventListener("click", () => {
+    byId("emp-df-from").value = "";
+    byId("emp-df-to").value = "";
+    renderList();
+  });
 
   function renderKpis() {
     const box = byId("emp-kpis");
     box.textContent = "";
     for (const f of FILTERS) {
       if (f.cloud && !cloudOn()) continue;
+      if (f.dates && !empHasDates()) continue;
       const n = employees.filter(f.test).length;
       const k = mk("button", `emp-kpi${f.cls && n ? " " + f.cls : ""}${filter === f.k ? " is-on" : ""}`);
       k.type = "button";
@@ -4178,14 +4520,14 @@ function setupEmployeesAdminModal({ onChanged }) {
       const row = mk("button", "emp-row");
       row.type = "button";
       const nm = mk("div", "emp-row-name");
-      const hd = hireDateOf(e);
-      const sm = mk("small", "", `${e.rank || "Sin rango"} · ${pctOf(e)}`);
-      if (hd) {
-        const d = mk("span", "emp-hire" + (hd.exact ? "" : " approx"), `📅 ${hd.exact ? "" : "~"}${fmtDayEs(hd.day)}`);
-        d.title = hd.exact ? "Fecha de contratación" : "Sin fecha de contratación: primera semana cerrada en la que sale";
-        sm.appendChild(d);
+      nm.append(mk("b", "", full), mk("small", "", `${e.rank || "Sin rango"} · ${pctOf(e)}`));
+      const ed = empDatesOf(e);
+      if (empHasDates() || ed.altaAt) {
+        const parts = [];
+        if (ed.altaAt) parts.push(`Ingreso ${empDate(ed.altaAt)}`);
+        if (ed.contratadoAt && ed.contratadoAt !== ed.altaAt) parts.push(`Contratado ${empDate(ed.contratadoAt)}`);
+        nm.appendChild(mk("small", "emp-dates" + (parts.length ? "" : " none"), parts.length ? `📅 ${parts.join(" · ")}` : "📅 Sin fechas"));
       }
-      nm.append(mk("b", "", full), sm);
       const flags = mk("div", "emp-row-flags");
       const disc = getEmployeeDiscord(full);
       const iban = getEmployeeIban(full);
@@ -4196,6 +4538,8 @@ function setupEmployeesAdminModal({ onChanged }) {
       row.append(avatar(e), nm, badge(e.rank));
       if (cloudOn() && !isOwnerRank(e.rank)) row.append(strikeChip(strikesOf(e)));
       else row.append(mk("span", ""));
+      const ic = cloudOn() && isJefe() ? inactChip(e) : null;
+      if (ic) flags.prepend(ic);
       row.append(flags, mk("span", "emp-go", "›"));
       row.addEventListener("click", () => openFicha(e.id));
       list.appendChild(row);
@@ -4277,9 +4621,11 @@ function setupEmployeesAdminModal({ onChanged }) {
     const line = mk("div", "emp-fh-line");
     line.appendChild(badge(e.rank));
     if (cloudOn() && n) line.appendChild(strikeChip(n));
-    const hd = hireDateOf(e);
-    if (hd) line.appendChild(mk("span", "muted", `· 📅 contratado el ${fmtDayEs(hd.day)}${hd.exact ? "" : " (aprox.: primera semana cerrada)"}`));
-    else line.appendChild(mk("span", "muted", "· 📅 sin fecha de contratación"));
+    const icF = cloudOn() && isJefe() ? inactChip(e) : null;
+    if (icF) line.appendChild(icF);
+    const fd = empDatesOf(e);
+    const since = fd.altaAt || (STRIKE_HIST.slice().reverse().find((w) => strikeRowIn(w, e.id, full))?.semana ?? "");
+    if (since) line.appendChild(mk("span", "muted", `· en el Badulaque desde ${empDate(since)}${fd.altaAt ? ` (${empSeniority(since)})` : " (primera semana cerrada)"}`));
     who.appendChild(line);
     head.appendChild(who);
     if (canEdit()) {
@@ -4312,6 +4658,15 @@ function setupEmployeesAdminModal({ onChanged }) {
         kv("Comisión", pctOf(e)),
         kv("Cobra nómina", noPay ? "No" : "Sí")
       );
+      const fdd = empDatesOf(e);
+      if (empHasDates() || fdd.altaAt) {
+        datos.append(
+          kv("Ingreso al Badulaque", fdd.altaAt ? `${empDate(fdd.altaAt)} · ${empSeniority(fdd.altaAt)}` : "⚠ Sin fecha", fdd.altaAt ? "" : "emp-no"),
+          kv("Contratación", fdd.contratadoAt ? empDate(fdd.contratadoAt) : empHasDates() ? "⚠ Sin fecha" : "—", fdd.contratadoAt || !empHasDates() ? "" : "emp-no")
+        );
+      }
+      const ix = cloudOn() && isJefe() ? inactOf(e) : null;
+      if (ix) datos.append(kv("Última factura", ix.last ? `${dlogDate(new Date(ix.last).toISOString())} · hace ${ix.days} ${ix.days === 1 ? "día" : "días"}` : inactText(ix), ix.level >= 2 ? "emp-no" : ""));
     }
     card.appendChild(datos);
 
@@ -4470,11 +4825,19 @@ function setupEmployeesAdminModal({ onChanged }) {
     const npL = mk("label", "emp-check");
     npL.append(np, mk("span", "", "No cobra la nómina"));
     const grid = mk("div", "emp-edit-grid");
-    const hdNow = hireDateOf(e);
-    const aIn = inp(hdNow?.exact ? hdNow.day : "", "");
+    grid.append(field("Nombre", nIn), field("Apellido", sIn), field("Rango", rSel), field("IBAN", iIn), field("ID de Discord", dIn));
+    const dNow = empDatesOf(e);
+    const aIn = inp(dNow.altaAt, "");
     aIn.type = "date";
+    aIn.max = empToday();
     aIn.classList.add("emp-date");
-    grid.append(field("Nombre", nIn), field("Apellido", sIn), field("Rango", rSel), field("IBAN", iIn), field("Fecha de contratación", aIn), field("ID de Discord", dIn));
+    const cIn = inp(dNow.contratadoAt, "");
+    cIn.type = "date";
+    cIn.max = empToday();
+    cIn.classList.add("emp-date");
+    const dates = mk("div", "emp-edit-grid emp-edit-dates");
+    if (empHasDates()) dates.append(field("📅 Ingreso al Badulaque", aIn), field("📝 Contratación", cIn));
+    else dates.appendChild(mk("p", "muted emp-small", "Para guardar las fechas de ingreso y contratación, pega en Supabase el SQL 9_fechas_empleados.sql."));
     const save = btn("Guardar", "primary");
     const cancel = btn("Cancelar");
     cancel.addEventListener("click", () => {
@@ -4489,6 +4852,7 @@ function setupEmployeesAdminModal({ onChanged }) {
       if (discord === null) return alert("Eso no parece un ID de Discord. Es un número de 17 a 20 cifras (clic derecho sobre la persona → Copiar ID de usuario).");
       const ib = parseIban(iIn.value);
       if (ib === null) return alert("El IBAN no es válido. Es una letra y 6 números, como J739745.");
+      if (empHasDates() && aIn.value && cIn.value && cIn.value < aIn.value) return alert("La fecha de contratación no puede ser anterior a la de ingreso al Badulaque.");
       const newFull = `${name} ${surname}`;
       if (newFull !== full) {
         const clash = [...employees, ...listFired()].find((x) => String(x.id) !== String(e.id) && normalizeKeySimple(fullName(x)) === normalizeKeySimple(newFull));
@@ -4500,12 +4864,14 @@ function setupEmployeesAdminModal({ onChanged }) {
       try {
         if (cloudOn()) {
           const patch = { name, surname, rank: rSel.value, discord, iban: ib, no_pay: np.checked };
-          // La fecha solo se manda si cambia (sin el SQL 7 la columna no existe).
-          if (aIn.value !== (hdNow?.exact ? hdNow.day : "")) patch.alta_at = aIn.value ? `${aIn.value}T12:00:00Z` : null;
+          // Las fechas solo se mandan con el SQL 9 (sin el, la columna no existe).
+          if (EMP_CLOUD.hasDates) {
+            patch.alta_at = aIn.value || null;
+            patch.contratado_at = cIn.value || null;
+          }
           await empCloudPatch(e.id, patch);
         } else {
           await updateEmployee(e.id, { name, surname, rank: rSel.value }, adminPass);
-          if ((e.rank || "") !== rSel.value) rankLogLocal({ id: e.id, name, surname }, e.rank, rSel.value);
           if (newFull !== full) {
             setEmployeeDiscord(full, "");
             setEmployeeIban(full, "");
@@ -4514,8 +4880,8 @@ function setupEmployeesAdminModal({ onChanged }) {
           setEmployeeDiscord(newFull, discord);
           setEmployeeIban(newFull, ib);
           setEmployeeNoPay(newFull, np.checked);
-          if (newFull !== full) setEmployeeAltaLocal(full, "");
-          setEmployeeAltaLocal(newFull, aIn.value);
+          if (newFull !== full) setEmployeeDatesLocal(full, null);
+          setEmployeeDatesLocal(newFull, { a: aIn.value, c: cIn.value });
         }
         editing = false;
         setStatus(`✔ Datos de ${newFull} guardados.`, true);
@@ -4536,7 +4902,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     });
     const acts = mk("div", "emp-acts");
     acts.append(save, cancel);
-    f.append(grid, npL, acts);
+    f.append(grid, dates, npL, acts);
     return f;
   }
 
@@ -4546,8 +4912,8 @@ function setupEmployeesAdminModal({ onChanged }) {
     b.disabled = true;
     try {
       await updateEmployee(e.id, { rank: to }, adminPass);
-      if (!cloudOn()) rankLogLocal(e, e.rank, to);
       setStatus(`✔ ${fullName(e)} ahora es ${to}.`, true);
+      dc.key = "";
       const name = fullName(e);
       await refresh();
       if (!employees.some((x) => String(x.id) === fichaId)) {
@@ -4558,55 +4924,30 @@ function setupEmployeesAdminModal({ onChanged }) {
         }
       }
       await (onChanged?.());
+      if (cloudOn() && isJefe()) status.append(" ", dcGoBtn());
     } catch (err) {
       b.disabled = false;
       alert(`No se pudo cambiar el rango: ${err.message || err}`);
     }
   }
 
-  // ---------- Despedir (ventana con motivo) ----------
-  const fireDlg = byId("fire-dlg");
-  function askFireReason(e) {
-    return new Promise((resolve) => {
-      const full = fullName(e);
-      const strikes = strikesOf(e);
-      byId("fire-name").textContent = full;
-      byId("fire-rank").textContent = e.rank || "Sin rango";
-      byId("fire-strikes").textContent = strikes ? `${strikes >= STRIKE_MAX ? "🚫" : "⚠️"} ${strikes}/${STRIKE_MAX} strikes seguidos` : "";
-      const sel = byId("fire-reason");
-      sel.value = strikes >= STRIKE_MAX ? sel.options[0].value : "";
-      byId("fire-detail").value = "";
-      byId("fire-ok").disabled = !sel.value;
-      const done = (val) => {
-        fireDlg.removeEventListener("close", onClose);
-        resolve(val);
-      };
-      const onClose = () => {
-        if (fireDlg.returnValue !== "ok") return done("");
-        const d = byId("fire-detail").value.trim();
-        done(d ? `${sel.value} · ${d}` : sel.value);
-      };
-      fireDlg.addEventListener("close", onClose);
-      fireDlg.returnValue = "";
-      fireDlg.showModal();
-    });
-  }
-  byId("fire-reason")?.addEventListener("change", () => {
-    byId("fire-ok").disabled = !byId("fire-reason").value;
-  });
-
   async function fireEmp(e) {
     const label = fullName(e);
     if (!canEdit()) return alert(cloudOn() ? "Solo el Jefe Tribal puede despedir." : "Primero desbloquea con la contraseña.");
     if (isOwnerRank(e.rank) || isSelf(e)) return alert("No puedes despedirte a ti mismo ni al Jefe Tribal: perderías el acceso a la página.");
-    const reason = await askFireReason(e);
-    if (!reason) return;
+    const n = strikesOf(e);
+    const suggest = n >= STRIKE_MAX ? "strikes" : (cloudOn() && (inactOf(e)?.level || 0) >= 3) ? "inactividad" : "";
+    const extra = n ? `${n >= STRIKE_MAX ? "🚫" : "⚠️"} Lleva ${n}/${STRIKE_MAX} strikes seguidos.` : "";
+    const reason = await askBaja(`${label}${e.rank ? ` (${e.rank})` : ""}`, suggest, extra);
+    if (reason === null) return;
     try {
-      await fireEmployee(e, reason, adminPass);
+      await fireEmployee(e, reason.trim(), adminPass);
       fichaId = null;
       setStatus(`🚪 ${label} pasa a Despedidos.`, true);
+      dc.key = "";
       await refresh();
       await (onChanged?.());
+      if (cloudOn() && isJefe()) status.append(" ", dcGoBtn());
     } catch (err) {
       alert(`No se pudo despedir: ${err.message || err}`);
     }
@@ -4705,82 +5046,182 @@ function setupEmployeesAdminModal({ onChanged }) {
   }
 
   // ---------- Pestaña Rangos ----------
-  // ---------- Anuncio de ascensos y descensos ----------
-  let annSince = "";
-  let annToken = 0;
-  function renderAnnounce(root) {
-    const boxEl = mk("div", "emp-ann");
-    boxEl.appendChild(mk("h4", "", "📣 Anuncio de ascensos y descensos"));
-    const bar = mk("div", "emp-ann-bar");
-    const lab = mk("label", "");
-    lab.appendChild(mk("span", "", "Desde"));
-    const date = mk("input", "text-input");
-    date.type = "date";
-    if (!annSince) {
-      const d = new Date(Date.now() - 7 * 86400000);
-      annSince = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
-    date.value = annSince;
-    lab.appendChild(date);
-    const copy = btn("📋 Copiar para Discord", "primary");
-    copy.disabled = true;
-    bar.append(lab, copy);
-    const list = mk("div", "emp-ann-list");
-    list.appendChild(mk("p", "muted emp-small", "Buscando cambios de rango…"));
-    boxEl.append(bar, list);
-    root.appendChild(boxEl);
-    let current = [];
-    const load = async () => {
-      const tok = ++annToken;
-      list.textContent = "";
-      list.appendChild(mk("p", "muted emp-small", "Buscando cambios de rango…"));
-      copy.disabled = true;
-      let changes = [];
-      let err = "";
-      try {
-        changes = netRankChanges(await rankChangesSince(new Date(`${annSince}T00:00:00`).toISOString()));
-      } catch (x) {
-        err = x.code === "PGRST205" || x.code === "42P01" || x.status === 404 ? "Falta pegar en Supabase el SQL 7_historial_empleados.sql: los ascensos salen del historial." : `No se pudieron cargar: ${x.message || x}`;
-      }
-      if (tok !== annToken) return;
-      list.textContent = "";
-      if (err) return list.appendChild(mk("p", "muted emp-small", err));
-      if (!changes.length) return list.appendChild(mk("p", "muted emp-small", "No hay ascensos ni descensos desde esa fecha. Se apuntan solos al usar «Subir a… / Bajar a…» o al cambiar el rango en la ficha."));
-      current = changes.map((c) => ({ ...c, on: true }));
-      for (const c of current) {
-        const row = mk("label", "emp-ann-row");
-        const ck = mk("input");
-        ck.type = "checkbox";
-        ck.checked = true;
-        ck.addEventListener("change", () => {
-          c.on = ck.checked;
-          copy.disabled = !current.some((x) => x.on);
-        });
-        row.append(ck, mk("span", c.up ? "emp-ok" : "emp-no", c.up ? "⬆️" : "⬇️"), mk("b", "", c.name), mk("span", "muted", `${c.from || "sin rango"} → `), mk("span", `pg-badge ${empRankCls(c.to)}`, c.to || "Sin rango"));
-        if (!getEmployeeDiscord(c.name)) row.appendChild(mk("small", "emp-no", "sin Discord: saldrá su nombre"));
-        list.appendChild(row);
-      }
-      copy.disabled = false;
-    };
-    date.addEventListener("change", () => {
-      annSince = date.value || annSince;
-      load();
+  // ---------- 📣 Para Discord: movimientos de personal de una semana ----------
+  // Separados en pantalla, pero en UN solo mensaje (un copiar, un pegar).
+  const dc = { sun: null, key: "", items: [], desc: [], bajas: [], off: new Set(), frase: ascFraseAzar(), cierre: pickOne(DESC_CIERRES), cierreB: pickOne(BAJAS_CIERRES), err: "" };
+  function dcGoBtn() {
+    const go = btn("📣 Mensaje para Discord", "ghost emp-dc-go", "Abrir el mensaje de la semana");
+    go.addEventListener("click", () => {
+      dc.sun = ascDefaultWeek();
+      dc.key = "";
+      fichaId = null;
+      setTab("discord");
     });
-    copy.addEventListener("click", async () => {
-      const sel = current.filter((c) => c.on);
-      if (!sel.length) return;
-      const text = rankAnnouncementText(sel);
-      const ok = await copyText(text);
-      if (!ok) openCopyFallback(text);
-      setStatus(ok ? `📋 Anuncio copiado (${sel.length} ${sel.length === 1 ? "cambio" : "cambios"}). Pégalo en Discord.` : "", true);
-    });
-    load();
+    return go;
   }
+  const dcOn = (it, pre) => !dc.off.has(`${pre}:${it.id}`);
+  const dcText = () => {
+    const up = dc.items.filter((it) => dcOn(it, "u"));
+    const desc = dc.desc.filter((it) => dcOn(it, "d"));
+    const bajas = dc.bajas.filter((it) => dcOn(it, "b"));
+    return movDiscordText(up, desc, bajas, dc.sun, up.length ? dc.frase : desc.length ? dc.cierre : dc.cierreB);
+  };
+  function renderDiscordPreview() {
+    const t = dcText();
+    byId("emp-dc-prev").textContent = t || "No hay nada marcado para esa semana.";
+    byId("emp-dc-copy").disabled = !t;
+  }
+  const dcFrases = (keepUp = false) => {
+    if (!keepUp) {
+      const mot = ascMotivosAzar(dc.items.length);
+      dc.items.forEach((it, i) => (it.motivo = mot[i]));
+    }
+    for (const it of dc.desc) it.frase = pickOne((DESC_MOTIVOS.find((m) => m.k === it.motivo) || DESC_MOTIVOS[0]).f, it.frase);
+    const used = new Set();
+    for (const it of dc.bajas) {
+      const pool = BAJA_FRASES[it.tipo] || BAJA_FRASES.otro;
+      const free = pool.filter((f) => !used.has(f) && f !== it.frase);
+      it.frase = pickOne(free.length ? free : pool);
+      used.add(it.frase);
+    }
+  };
+  function dcCheck(pre, it) {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = dcOn(it, pre);
+    cb.addEventListener("change", () => {
+      if (cb.checked) dc.off.delete(`${pre}:${it.id}`);
+      else dc.off.add(`${pre}:${it.id}`);
+      renderDiscordPreview();
+    });
+    return cb;
+  }
+  const dcBadge = (r) => mk("span", `pg-badge ${empRankCls(r)}`, r || "sin rango");
+  function dcPath(from, to) {
+    const path = mk("span", "emp-dc-path");
+    path.append(dcBadge(from), mk("span", "emp-dc-arrow", "➜"), dcBadge(to));
+    return path;
+  }
+  function dcSelect(opts, val, onChange) {
+    const sel = document.createElement("select");
+    sel.className = "text-input emp-dc-sel";
+    for (const [v, t] of opts) sel.append(new Option(t, v));
+    sel.value = val;
+    sel.addEventListener("change", () => onChange(sel.value));
+    return sel;
+  }
+  const noDiscord = () => mk("span", "muted emp-small", "· sin Discord: saldrá solo el nombre");
+  async function renderDiscordTab(force = false) {
+    const list = byId("emp-dc-list");
+    if (!list) return;
+    if (!dc.sun) dc.sun = ascDefaultWeek();
+    const max = ascDefaultWeek();
+    if (dc.sun > max) dc.sun = max;
+    byId("emp-dc-week").textContent = `Semana del ${ascDM(dc.sun)} al ${ascDM(ascDay(dc.sun, 6))}`;
+    byId("emp-dc-next").disabled = +dc.sun >= +max;
+    const info = byId("emp-dc-info");
+    const key = String(+dc.sun);
+    if (dc.key !== key || force) {
+      dc.key = key;
+      dc.err = "";
+      list.textContent = "";
+      list.appendChild(mk("p", "muted emp-empty", "Buscando en el historial…"));
+      try {
+        const people = EMP_CLOUD.list;
+        const [items, r] = await Promise.all([ascensosSemana(dc.sun, people), descensosSemana(dc.sun, people)]);
+        if (dc.key !== key) return;
+        dc.items = items;
+        dc.desc = r.desc;
+        dc.bajas = r.bajas;
+        dcFrases();
+      } catch (err) {
+        dc.items = [];
+        dc.desc = [];
+        dc.bajas = [];
+        dc.err = err.code === "PGRST205" || err.code === "42P01" || err.status === 404 ? "falta pegar en Supabase el SQL 7_historial_empleados.sql." : err.message || String(err);
+      }
+      dc.off.clear();
+    }
+    list.textContent = "";
+    if (dc.err) {
+      info.textContent = "";
+      list.appendChild(mk("p", "muted emp-empty", `No se pudo leer el historial: ${dc.err}`));
+      return renderDiscordPreview();
+    }
+    const nu = dc.items.length, nd = dc.desc.length, nb = dc.bajas.length;
+    const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+    info.textContent = `${pl(nu, "ascenso", "ascensos")}, ${pl(nd, "descenso", "descensos")} y ${pl(nb, "baja", "bajas")} · entre el ${ascDM(ascDay(dc.sun, 6))} y el ${ascDM(ascDay(dc.sun, 13))}`;
+    if (!nu && !nd && !nb) list.appendChild(mk("p", "muted emp-empty", "No hay ascensos, descensos ni bajas para esta semana. Se apuntan solos al subir o bajar a alguien desde su ficha y al despedir."));
+    if (nu) list.appendChild(mk("div", "emp-dc-group", "📈 Ascensos"));
+    for (const it of dc.items) {
+      const row = mk("label", "emp-dc-row");
+      row.append(dcCheck("u", it), mk("span", "emp-dc-who", it.name), dcPath(it.from, it.to), mk("span", "muted emp-small emp-dc-mot", it.motivo));
+      if (!it.discord) row.appendChild(noDiscord());
+      list.appendChild(row);
+    }
+    if (nd) list.appendChild(mk("div", "emp-dc-group", "📉 Descensos"));
+    for (const it of dc.desc) {
+      const row = mk("div", "emp-dc-row");
+      const sel = dcSelect(DESC_MOTIVOS.map((m) => [m.k, m.label]), it.motivo, (v) => {
+        it.motivo = v;
+        it.frase = pickOne(DESC_MOTIVOS.find((m) => m.k === v).f);
+        renderDiscordTab();
+      });
+      row.append(dcCheck("d", it), mk("span", "emp-dc-who", it.name), dcPath(it.from, it.to), sel, mk("span", "muted emp-small emp-dc-mot", it.frase));
+      if (!it.discord) row.appendChild(noDiscord());
+      list.appendChild(row);
+    }
+    if (nb) list.appendChild(mk("div", "emp-dc-group", "🚪 Bajas del Badulaque"));
+    for (const it of dc.bajas) {
+      const row = mk("div", "emp-dc-row");
+      const sel = dcSelect(BAJA_TIPOS.map((t) => [t.k, `${t.e} ${t.label}`]), it.tipo, (v) => {
+        it.tipo = v;
+        it.frase = pickOne(BAJA_FRASES[v] || BAJA_FRASES.otro);
+        renderDiscordTab();
+      });
+      row.append(dcCheck("b", it), mk("span", "emp-dc-who", it.name), dcBadge(it.rank), sel);
+      if (it.discord) {
+        const ml = mk("label", "emp-dc-ment");
+        const m = document.createElement("input");
+        m.type = "checkbox";
+        m.checked = it.mention !== false;
+        m.title = "Si ya no está en el servidor de Discord, quítalo y saldrá su nombre";
+        m.addEventListener("change", () => {
+          it.mention = m.checked;
+          renderDiscordPreview();
+        });
+        ml.append(m, " Mencionar");
+        row.append(ml);
+      } else row.appendChild(noDiscord());
+      row.append(mk("span", "muted emp-small emp-dc-mot", it.frase + (it.nota ? `  · Nota interna: ${it.nota}` : "")));
+      list.appendChild(row);
+    }
+    renderDiscordPreview();
+  }
+  const dcMove = (n) => {
+    dc.sun = ascDay(dc.sun || ascDefaultWeek(), 7 * n);
+    renderDiscordTab();
+  };
+  byId("emp-dc-prev-w")?.addEventListener("click", () => dcMove(-1));
+  byId("emp-dc-next")?.addEventListener("click", () => dcMove(1));
+  byId("emp-dc-frase")?.addEventListener("click", () => {
+    dc.frase = ascFraseAzar(dc.frase);
+    dc.cierre = pickOne(DESC_CIERRES, dc.cierre);
+    dc.cierreB = pickOne(BAJAS_CIERRES, dc.cierreB);
+    dcFrases();
+    renderDiscordTab();
+  });
+  byId("emp-dc-copy")?.addEventListener("click", async () => {
+    const t = dcText();
+    if (!t) return;
+    const ok = await copyText(t);
+    if (!ok) openCopyFallback(t);
+    else setStatus("✔ Mensaje copiado. Pégalo en el canal de Discord.", true);
+  });
 
   function renderRanksTab() {
     const t = byId("emp-rank-table");
     t.textContent = "";
-    if (hasAccess()) renderAnnounce(t);
     t.appendChild(mk("h4", "emp-rk-title", "Rangos y plantilla"));
     for (const r of RANKS.slice().reverse()) {
       const people = employees.filter((e) => normalizeKeySimple(e.rank || "") === normalizeKeySimple(r.label));
@@ -4791,6 +5232,45 @@ function setupEmployeesAdminModal({ onChanged }) {
       t.appendChild(row);
     }
     t.appendChild(mk("p", "muted emp-note", `Mínimo semanal para no llevar strike: ${fmtMoney(WEEK_MIN)} (facturas pagadas + rascas). Bono del empleado de la semana: ${fmtMoney(WEEK_BONUS)}. ${STRIKE_MAX} strikes seguidos = despido. El Jefe Tribal no lleva strikes ni compite por el bono. Los ascensos no son automáticos: se dan desde la ficha.`));
+    if (!(cloudOn() && isJefe())) return;
+    // 💤 Aviso de inactividad: dias sin facturar para cada color.
+    const ib = mk("div", "emp-inact-cfg");
+    ib.appendChild(mk("h4", "", "💤 Aviso de inactividad"));
+    ib.appendChild(mk("p", "muted emp-small", `Días sin facturar (según las facturas del Discord del Badulaque, últimos ${INACT_VENTANA} días) para que salga el aviso en el listado y en la ficha.`));
+    const D = INACT.dias;
+    const grid = mk("div", "emp-inact-grid");
+    const inputs = {};
+    for (const [k, lbl, cls] of [["aviso", "Aviso", "l1"], ["alerta", "Alerta", "l2"], ["grave", "Grave", "l3"]]) {
+      const l = mk("label", "emp-inact-f");
+      l.appendChild(mk("span", `emp-inact ${cls}`, `💤 ${lbl}`));
+      const i = mk("input", "text-input");
+      i.type = "number";
+      i.min = "1";
+      i.max = String(INACT_VENTANA);
+      i.value = String(D[k]);
+      i.disabled = !AUTH.tribal;
+      inputs[k] = i;
+      l.append(i, mk("span", "muted emp-small", "días"));
+      grid.appendChild(l);
+    }
+    ib.appendChild(grid);
+    if (AUTH.tribal) {
+      const save = btn("Guardar días", "");
+      save.addEventListener("click", async () => {
+        save.disabled = true;
+        try {
+          await inactSaveDias({ aviso: +inputs.aviso.value, alerta: +inputs.alerta.value, grave: +inputs.grave.value });
+          setStatus("✔ Días del aviso de inactividad guardados.", true);
+          renderAll();
+        } catch (err) {
+          alert(err.message || err);
+        } finally {
+          save.disabled = false;
+        }
+      });
+      ib.appendChild(save);
+    } else ib.appendChild(mk("p", "muted emp-small", "Solo el Jefe Tribal puede cambiar los días."));
+    t.appendChild(ib);
   }
 
   // ---------- Pestaña Despedidos ----------
@@ -4855,11 +5335,28 @@ function setupEmployeesAdminModal({ onChanged }) {
 
   function renderAll() {
     applyMode();
+    const nd = byId("emp-new-dates");
+    if (nd) {
+      nd.hidden = !empHasDates();
+      for (const id of ["emp-new-alta", "emp-new-contrato"]) {
+        const x = byId(id);
+        if (x && !x.value) x.value = empToday();
+        if (x) x.max = empToday();
+      }
+    }
+    const dt = byId("emp-date-toggle");
+    if (dt) dt.hidden = !empHasDates();
+    const ds = modal.querySelector('[data-sort="seniority"]');
+    if (ds) ds.hidden = !empHasDates();
     if (tab === "new" && byId("emp-tab-new").hidden) tab = "list";
     if (tab === "list") renderList();
     else renderCounts();
     if (tab === "strikes") renderStrikesTab();
     if (tab === "ranks") renderRanksTab();
+    const dcTab = byId("emp-tab-discord");
+    if (dcTab) dcTab.hidden = !(cloudOn() && isJefe());
+    if (tab === "discord" && dcTab?.hidden) return setTab("list");
+    if (tab === "discord") renderDiscordTab();
     renderFired();
   }
 
@@ -4871,7 +5368,10 @@ function setupEmployeesAdminModal({ onChanged }) {
       renderAll();
     } catch {
       alert("No se pudieron cargar los empleados.");
+      return;
     }
+    // Inactividad: se lee en segundo plano y se repinta al llegar.
+    if (cloudOn() && isJefe()) inactLoad().then((ok) => ok && modal.open && renderAll());
   }
 
   // ---------- Desbloquear (programa de escritorio) ----------
@@ -4917,19 +5417,31 @@ function setupEmployeesAdminModal({ onChanged }) {
       if (confirm(`${fullName(prevFired)} está en Despedidos${prevFired.firedReason ? ` (${prevFired.firedReason})` : ""}.\n\n¿Readmitirlo en vez de añadirlo de nuevo? Así conserva su historial.`)) await readmit(prevFired);
       return;
     }
+    const altaIn = byId("emp-new-alta");
+    const contIn = byId("emp-new-contrato");
+    const altaAt = (empHasDates() && altaIn?.value) || empToday();
+    const contratadoAt = (empHasDates() && contIn?.value) || altaAt;
+    if (contratadoAt < altaAt) return alert("La fecha de contratación no puede ser anterior a la de ingreso al Badulaque.");
     addBtn.disabled = true; // evita guardar dos veces mientras se guarda
     try {
-      await addEmployee({ name, surname, rank }, adminPass);
       const full = `${name} ${surname}`;
-      if (discord) setEmployeeDiscord(full, discord);
-      if (iban) setEmployeeIban(full, iban);
-      if (!cloudOn()) setEmployeeAltaLocal(full, localDay(new Date().toISOString()));
+      if (cloudOn()) {
+        // Todo en un solo guardado (Discord, IBAN y fechas).
+        await addEmployee({ name, surname, rank, discord, iban, altaAt, contratadoAt }, adminPass);
+      } else {
+        await addEmployee({ name, surname, rank }, adminPass);
+        if (discord) setEmployeeDiscord(full, discord);
+        if (iban) setEmployeeIban(full, iban);
+        setEmployeeDatesLocal(full, { a: altaAt, c: contratadoAt });
+      }
       nameInput.value = "";
       surInput.value = "";
       rankInput.value = "";
       discordInput.value = "";
       ibanInput.value = "";
-      setStatus(`➕ ${full} añadido a la plantilla.`, true);
+      if (altaIn) altaIn.value = empToday();
+      if (contIn) contIn.value = empToday();
+      setStatus(`✔ ${full} añadido${discord ? " con su Discord" : ""}${iban ? `${discord ? " e" : " con su"} IBAN` : ""}.`, true);
       await refresh();
       await (onChanged?.());
     } catch (err) {
