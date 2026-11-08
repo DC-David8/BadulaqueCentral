@@ -2121,6 +2121,411 @@ function showAccessModal({ sectionLabel, zone }) {
   });
 }
 
+// ============================================================================
+// Panel del Jefe Tribal (como el Panel del Jefe de Aguila Motors v124). Solo
+// el Jefe Tribal y con la nube. Se llena solo: facturas del Discord del
+// Badulaque (discord_log), semanas cerradas de Pagos (pagos_semanas),
+// plantilla e historial.
+// ============================================================================
+const JP = { sun: "", weeks: new Map(), logs: new Map(), busy: false, all: false, allAlerts: false };
+
+const jpIsoAdd = (iso, n) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
+const jpDM = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+// Semana de pago (domingo a sabado, hora de Espana), igual que en Pagos:
+// si en Espana ya es domingo, la que acaba de cerrar; si no, la que esta en curso.
+function jpDefaultSun() {
+  const md = dlogMadridParts(Date.now());
+  const today = Date.UTC(md.y, md.m - 1, md.d);
+  return new Date(today - (md.wd === 0 ? 7 : md.wd) * 86400000).toISOString().slice(0, 10);
+}
+const jpOpenSun = () => {
+  const md = dlogMadridParts(Date.now());
+  return new Date(Date.UTC(md.y, md.m - 1, md.d) - md.wd * 86400000).toISOString().slice(0, 10);
+};
+
+async function jpLogsOf(sun) {
+  if (JP.logs.has(sun)) return JP.logs.get(sun);
+  const a = new Date(dlogMadridMidnight(sun)).toISOString();
+  const b = new Date(dlogMadridMidnight(sun, 7)).toISOString();
+  const rows = [];
+  for (let off = 0; ; off += 1000) {
+    const part = await cloud.req(`/rest/v1/discord_log?select=id,ts,content,embeds&ts=gte.${encodeURIComponent(a)}&ts=lt.${encodeURIComponent(b)}&order=ts.asc,id.asc&limit=1000&offset=${off}`);
+    if (!Array.isArray(part)) break;
+    rows.push(...part);
+    if (part.length < 1000) break;
+  }
+  if (sun !== jpOpenSun()) JP.logs.set(sun, rows);
+  return rows;
+}
+
+// Cifras de una semana. Cerrada en Pagos: lo guardado (facturas + rascas).
+// Sin cerrar: estimacion con las facturas del Discord (sin rascas, que estan
+// en el Discord de la ciudad).
+async function jpWeek(sun) {
+  if (JP.weeks.has(sun)) return JP.weeks.get(sun);
+  const rows = await jpLogsOf(sun);
+  let res;
+  try {
+    res = processText(dlogToText(rows));
+  } catch {
+    res = { invoices: {}, invSummary: { paid_total: 0, paid_count: 0 }, invByIssuerPaid: {} };
+  }
+  const closed = STRIKE_HIST.find((w) => String(w.semana) === sun && w.datos?.rows);
+  const emps = EMP_CLOUD.list.filter((e) => !e.firedAt);
+  let people;
+  if (closed) {
+    people = closed.datos.rows.map((r) => ({ id: r.id, name: r.name, rank: canonRank(r.rank), gross: Number(r.gross) || 0, payout: Number(r.payout) || 0, bonus: Number(r.bonus) || 0, noPay: !!r.noPay }));
+  } else {
+    const byKey = new Map(emps.map((e) => [normalizeKeySimple(fullName(e)), e]));
+    const map = new Map(emps.map((e) => [normalizeKeySimple(fullName(e)), { id: e.id, name: fullName(e), rank: e.rank, gross: 0 }]));
+    for (const [who, tot] of Object.entries(res.invByIssuerPaid || {})) {
+      const k = normalizeKeySimple(who);
+      const e = byKey.get(k);
+      const p = map.get(k) || { id: null, name: who, rank: "", gross: 0, extern: !e };
+      p.gross += Number(tot) || 0;
+      map.set(k, p);
+    }
+    people = [...map.values()].map((p) => {
+      const noPay = !p.extern && isEmployeeNoPay(p.name);
+      return { ...p, noPay, bonus: 0, payout: noPay || p.extern ? 0 : Math.round(p.gross * pctForRank(p.rank)) };
+    });
+    // Bono del empleado de la semana (el Jefe Tribal no compite).
+    const competes = (p) => !p.extern && !p.noPay && !isOwnerRank(p.rank);
+    const max = Math.max(0, ...people.filter(competes).map((p) => p.payout));
+    if (max > 0) for (const p of people) if (competes(p) && p.payout === max) { p.bonus = WEEK_BONUS; p.payout += WEEK_BONUS; }
+  }
+  const clients = new Map();
+  for (const inv of Object.values(res.invoices || {})) {
+    const who = String(inv.recipient || "").trim();
+    if (!who || !(inv.amount > 0)) continue;
+    const k = normalizeKeySimple(who);
+    const c = clients.get(k) || { name: who, total: 0, n: 0, last: "" };
+    c.total += inv.amount;
+    c.n++;
+    const when = String(inv.paid_at || inv.sent_at || "");
+    if (when > c.last) c.last = when;
+    clients.set(k, c);
+  }
+  const w = {
+    sun,
+    closed: !!closed,
+    vendido: closed ? Number(closed.datos.total) || 0 : Number(res.invSummary?.paid_total) || 0,
+    facturas: closed ? Number(closed.datos.facturas) || 0 : Number(res.invSummary?.paid_count) || 0,
+    rascas: closed ? Number(closed.datos.rascas) || 0 : null,
+    nominas: people.reduce((a, p) => a + (p.payout || 0), 0),
+    people,
+    clients: [...clients.values()].sort((x, y) => y.total - x.total),
+  };
+  w.queda = w.vendido - w.nominas;
+  // La semana en curso no se guarda (cambia a cada factura).
+  if (sun !== jpOpenSun()) JP.weeks.set(sun, w);
+  return w;
+}
+
+async function jpPlantilla(sun) {
+  const s = dlogMadridMidnight(sun), e = dlogMadridMidnight(sun, 7);
+  const sat = jpIsoAdd(sun, 6);
+  let up = 0, down = 0;
+  try {
+    const rows = await cloud.req(`/rest/v1/emp_historial?select=texto&tipo=eq.rango&at=gte.${encodeURIComponent(new Date(s).toISOString())}&at=lt.${encodeURIComponent(new Date(e).toISOString())}`);
+    for (const r of rows || []) {
+      const p = parseRankLog(r.texto);
+      if (p) p.up ? up++ : down++;
+    }
+  } catch {
+    // sin historial
+  }
+  const all = EMP_CLOUD.list;
+  const inWeek = (day) => !!day && day >= sun && day <= sat;
+  return {
+    n: all.filter((x) => !x.firedAt).length,
+    up,
+    down,
+    bajas: all.filter((f) => f.firedAt && +new Date(f.firedAt) >= s && +new Date(f.firedAt) < e).length,
+    altas: all.filter((x) => inWeek(x.altaAt)).length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Pantalla
+// ---------------------------------------------------------------------------
+function setupPanelJefe() {
+  const root = byId("tab-jefe");
+  if (!root) return;
+  const $ = (id) => byId(id);
+  const mk = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const money = (v) => fmtMoney(Math.round(v || 0));
+  const kShort = (v) => (Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)));
+  const delta = (cur, prev, goodUp = true) => {
+    // La semana en curso aun no esta completa: compararla con una entera confunde.
+    if (JP.sun === jpOpenSun()) return mk("div", "jp-d muted", "Semana en curso · se compara al cerrarla");
+    if (!prev) return mk("div", "jp-d muted", "— sin semana anterior");
+    const p = Math.round(((cur - prev) / Math.abs(prev)) * 100);
+    const up = p >= 0;
+    const cls = p === 0 ? "muted" : up === goodUp ? "up" : "down";
+    return mk("div", `jp-d ${cls}`, `${up ? "▲" : "▼"} ${Math.abs(p)} % vs semana anterior`);
+  };
+  const status = (t) => ($("jp-status").textContent = t);
+  const allowed = () => cloudOn() && isJefe() && AUTH.tribal;
+
+  async function load(force = false) {
+    if (!allowed() || JP.busy) return;
+    JP.busy = true;
+    if (!JP.sun) JP.sun = jpDefaultSun();
+    const max = jpOpenSun();
+    if (JP.sun > max) JP.sun = max;
+    $("jp-week").textContent = `Semana del ${jpDM(JP.sun)} al ${jpDM(jpIsoAdd(JP.sun, 6))}`;
+    $("jp-next").disabled = JP.sun >= max;
+    status("Cargando…");
+    root.classList.add("is-loading");
+    try {
+      if (force) {
+        JP.weeks.clear();
+        JP.logs.clear();
+      }
+      await loadStrikeHist();
+      await empCloudLoad();
+      const suns = Array.from({ length: 8 }, (_, i) => jpIsoAdd(JP.sun, -7 * (7 - i)));
+      const [weeks, plant] = await Promise.all([Promise.all(suns.map(jpWeek)), jpPlantilla(JP.sun), inactLoad(force)]);
+      render(weeks, plant);
+      const open = JP.sun === jpOpenSun();
+      status(`${open ? "Semana en curso (estimada con las facturas del Discord, sin rascas)" : weeks[7].closed ? "Semana cerrada en Pagos" : "Semana sin cerrar en Pagos (estimada, sin rascas)"} · actualizado a las ${new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}`);
+    } catch (err) {
+      status(`No se pudo cargar: ${err.message || err}`);
+    } finally {
+      JP.busy = false;
+      root.classList.remove("is-loading");
+    }
+  }
+
+  function kpi(box, icon, label, value, d, sub) {
+    box.textContent = "";
+    box.append(mk("div", "jp-l", `${icon} ${label}`), mk("div", "jp-v", value), d, mk("div", "jp-s", sub));
+  }
+
+  function render(weeks, plant) {
+    const w = weeks[7], p = weeks[6];
+    // ---- Cifras de la semana
+    const avg = w.facturas ? Math.round((w.vendido - 0) / w.facturas) : 0;
+    const sub1 = [`${w.facturas} ${w.facturas === 1 ? "factura" : "facturas"}`];
+    if (w.rascas != null) sub1.push(`${w.rascas} ${w.rascas === 1 ? "rasca" : "rascas"}`);
+    else sub1.push("sin rascas hasta cerrar la semana");
+    if (avg && w.rascas == null) sub1.push(`ticket medio ${money(avg)}`);
+    kpi($("jp-k1"), "💰", `Vendido${w.closed ? "" : " (estimado)"}`, money(w.vendido), delta(w.vendido, p.vendido), sub1.join(" · "));
+    const cobran = w.people.filter((x) => x.payout > 0).length;
+    kpi($("jp-k2"), "👥", `Nóminas${w.closed ? "" : " (estimadas)"}`, money(w.nominas), delta(w.nominas, p.nominas, false), `${cobran} ${cobran === 1 ? "empleado cobra" : "empleados cobran"} · incluye el bono de ${money(WEEK_BONUS)}`);
+    const pct = w.vendido > 0 ? Math.round((w.queda / w.vendido) * 100) : 0;
+    kpi($("jp-k3"), "🍎", "Queda para el Badulaque", money(w.queda), delta(w.queda, p.queda), `${pct} % de lo vendido`);
+    const stars = w.people.filter((x) => x.bonus > 0);
+    const prevStar = p.people.filter((x) => x.bonus > 0).map((x) => x.name);
+    const dStar = mk("div", "jp-d muted", stars.length && prevStar.length ? `La semana anterior: ${prevStar.join(", ")}` : "—");
+    kpi($("jp-k4"), "⭐", "Empleado de la semana", stars.length ? stars.map((x) => x.name).join(", ") : "—", dStar, stars.length ? `Vendió ${money(stars[0].gross)} · bono de ${money(WEEK_BONUS)}` : "Nadie ha vendido todavía");
+    $("jp-k4").querySelector(".jp-v").classList.add("jp-v-name");
+
+    renderChart(weeks);
+    renderAlerts(w);
+    renderRanking(w, p);
+
+    // ---- Clientes y plantilla
+    const cl = $("jp-clients");
+    cl.textContent = "";
+    if (!w.clients.length) cl.appendChild(mk("p", "muted jp-empty", "Sin facturas con cliente esta semana."));
+    for (const c of w.clients.slice(0, 5)) {
+      const tr = mk("div", "jp-row");
+      const l = mk("div", "jp-row-l");
+      const when = (c.last.match(/(\d{1,2})\/(\d{1,2})/) || []).slice(1).map((x) => x.padStart(2, "0")).join("/");
+      l.append(mk("b", "", c.name), mk("small", "muted", `${c.n} ${c.n === 1 ? "compra" : "compras"}${when ? ` · última el ${when}` : ""}`));
+      tr.append(l, mk("b", "jp-num", money(c.total)));
+      cl.appendChild(tr);
+    }
+    const pl = $("jp-plant");
+    pl.textContent = "";
+    for (const [k, v] of [["En plantilla", plant.n], ["⬆️ Ascensos · ⬇️ Descensos", `${plant.up} · ${plant.down}`], ["➕ Altas · 🚪 Bajas", `${plant.altas} · ${plant.bajas}`]]) {
+      const r = mk("div", "jp-mv");
+      r.append(mk("span", "", k), mk("b", "", String(v)));
+      pl.appendChild(r);
+    }
+  }
+
+  function renderChart(weeks) {
+    const box = $("jp-chart");
+    const W = Math.max(320, Math.round(box.clientWidth || 720)), H = 230, top = 22, base = 186, left = 44;
+    const max = Math.max(1, ...weeks.map((w) => Math.max(w.vendido, w.nominas)));
+    const step = 10 ** Math.floor(Math.log10(max));
+    const nice = Math.ceil(max / step / 2) * step * 2 || 1;
+    const y = (v) => base - (Math.max(0, v) / nice) * (base - top);
+    const col = (W - left - 10) / weeks.length;
+    const bw = Math.max(8, Math.min(30, col / 2 - 6));
+    let g = "";
+    for (let i = 0; i <= 3; i++) {
+      const v = (nice / 3) * i;
+      g += `<line x1="${left}" y1="${y(v)}" x2="${W - 8}" y2="${y(v)}" stroke="rgba(255,255,255,.07)"/><text x="${left - 6}" y="${y(v) + 3}" fill="#8a96a3" font-size="10" text-anchor="end">${kShort(v)}</text>`;
+    }
+    let line = "";
+    weeks.forEach((w, i) => {
+      const x = left + i * col + col / 2;
+      const sel = i === weeks.length - 1;
+      const est = !w.closed;
+      g += `<rect x="${x - bw - 2}" y="${y(w.vendido)}" width="${bw}" height="${base - y(w.vendido)}" rx="4" fill="${sel ? "#3aa0ff" : "#1f5f99"}" ${est ? 'fill-opacity=".55" stroke="#3aa0ff" stroke-dasharray="3 2"' : ""}><title>Vendido ${money(w.vendido)}${est ? " (estimado, sin rascas)" : ""}</title></rect>`;
+      g += `<rect x="${x + 2}" y="${y(w.nominas)}" width="${bw}" height="${base - y(w.nominas)}" rx="4" fill="#4b5563" ${est ? 'fill-opacity=".55"' : ""}><title>Nóminas ${money(w.nominas)}</title></rect>`;
+      line += `${i ? "L" : "M"}${x},${y(w.queda)} `;
+      g += `<text x="${x}" y="${base + 16}" fill="${sel ? "#8fcaff" : "#8a96a3"}" font-size="10.5" text-anchor="middle" font-weight="${sel ? 700 : 400}">${jpDM(w.sun)}${est ? "*" : ""}</text>`;
+      if (sel) g += `<text x="${x - bw / 2 - 2}" y="${y(w.vendido) - 6}" fill="#8fcaff" font-size="10.5" text-anchor="middle" font-weight="700">${kShort(w.vendido)}</text>`;
+    });
+    g += `<path d="${line}" fill="none" stroke="#7cffc4" stroke-width="2"/>`;
+    weeks.forEach((w, i) => {
+      const x = left + i * col + col / 2;
+      g += `<circle cx="${x}" cy="${y(w.queda)}" r="3.5" fill="#7cffc4"><title>Para el Badulaque ${money(w.queda)}</title></circle>`;
+    });
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Vendido y nóminas de las últimas 8 semanas">${g}</svg>`;
+    $("jp-chart-note").hidden = weeks.every((w) => w.closed);
+  }
+
+  function renderAlerts(w) {
+    const box = $("jp-alerts");
+    box.textContent = "";
+    const out = [];
+    const open = JP.sun === jpOpenSun();
+    const gross = new Map(w.people.map((p) => [normalizeKeySimple(p.name), p.gross]));
+    const staff = EMP_CLOUD.list.filter((e) => !e.firedAt);
+    for (const e of staff) {
+      const name = fullName(e);
+      if (isOwnerRank(e.rank)) continue;
+      const noPay = isEmployeeNoPay(name);
+      const n = noPay ? 0 : strikesBefore(e.id, name);
+      const g = gross.get(normalizeKeySimple(name)) || 0;
+      if (n >= STRIKE_MAX) out.push({ o: 0, i: "🚫", t: `${name} · ${Math.min(n, STRIKE_MAX)}/${STRIKE_MAX} strikes`, s: "Para despido · no llegó al mínimo semanas seguidas" });
+      else if (n === STRIKE_MAX - 1 && open && g < WEEK_MIN) out.push({ o: 2, i: "⚠️", t: `${name} · ${n}/${STRIKE_MAX} strikes`, s: `Le faltan ${money(WEEK_MIN - g)} para el mínimo esta semana (sin contar rascas; si no llega, tercer strike)` });
+      const ix = inactOf(e);
+      if (ix && ix.level >= 2) out.push({ o: ix.level === 3 ? 1 : 3, i: "💤", t: `${name} · ${ix.more ? `+${INACT_VENTANA}` : ix.days} días sin facturar`, s: ix.level === 3 ? "Grave · candidato a baja por inactividad" : "Alerta · lleva varios días sin facturar" });
+    }
+    const sinIban = staff.filter((e) => !isEmployeeNoPay(fullName(e)) && !getEmployeeIban(fullName(e))).map(fullName);
+    if (sinIban.length) out.push({ o: 4, i: "🏦", t: `${sinIban.length} ${sinIban.length === 1 ? "empleado" : "empleados"} sin IBAN`, s: `No se les puede pagar: ${sinIban.join(", ")}` });
+    const sinDisc = staff.filter((e) => !getEmployeeDiscord(fullName(e))).map(fullName);
+    if (sinDisc.length) out.push({ o: 5, i: "🔗", t: `${sinDisc.length} ${sinDisc.length === 1 ? "empleado" : "empleados"} sin Discord`, s: `No pueden iniciar sesión ni se les etiqueta: ${sinDisc.join(", ")}` });
+    out.sort((a, b) => a.o - b.o);
+    if (!out.length) box.appendChild(mk("p", "muted jp-empty", "✅ Todo en orden: nada que revisar."));
+    const shown = JP.allAlerts ? out : out.slice(0, 6);
+    for (const a of shown) {
+      const r = mk("div", "jp-alert");
+      const t = mk("div", "");
+      t.append(mk("b", "", a.t), mk("small", "", a.s));
+      r.append(mk("span", "jp-ai", a.i), t);
+      box.appendChild(r);
+    }
+    if (out.length > 6) {
+      const more = mk("button", "ghost jp-more", JP.allAlerts ? "Ver menos" : `Ver los ${out.length} avisos`);
+      more.type = "button";
+      more.addEventListener("click", () => {
+        JP.allAlerts = !JP.allAlerts;
+        renderAlerts(w);
+      });
+      box.appendChild(more);
+    }
+  }
+
+  function renderRanking(w, p) {
+    const box = $("jp-rank");
+    box.textContent = "";
+    const prev = new Map(p.people.map((x) => [normalizeKeySimple(x.name), x.gross]));
+    const list = w.people.filter((x) => !x.extern && !isOwnerRank(x.rank)).sort((a, b) => b.gross - a.gross || a.name.localeCompare(b.name, "es"));
+    const max = Math.max(1, ...list.map((x) => x.gross));
+    const shown = JP.all ? list : list.slice(0, 5);
+    if (!list.length) box.appendChild(mk("p", "muted jp-empty", "Sin datos de esta semana."));
+    const emp = new Map(EMP_CLOUD.list.filter((e) => !e.firedAt).map((e) => [normalizeKeySimple(fullName(e)), e]));
+    shown.forEach((x) => {
+      const r = mk("div", "jp-row");
+      const l = mk("div", "jp-row-l");
+      const head = mk("div", "jp-rk-head");
+      head.append(mk("span", "jp-pos", `${list.indexOf(x) + 1}.`), mk("b", "", x.name), mk("span", `pg-badge ${empRankCls(x.rank)}`, x.rank || "sin rango"));
+      if (x.bonus) head.appendChild(mk("span", "jp-star", "⭐"));
+      const e = emp.get(normalizeKeySimple(x.name));
+      const ix = e ? inactOf(e) : null;
+      if (ix && ix.level) head.appendChild(mk("span", `emp-inact l${ix.level}`, `💤 ${ix.more ? `+${INACT_VENTANA}` : ix.days} d`));
+      const bar = mk("div", "jp-bar");
+      const fill = mk("span");
+      fill.style.width = `${Math.round((x.gross / max) * 100)}%`;
+      if (x.gross < WEEK_MIN) fill.classList.add("lo");
+      bar.appendChild(fill);
+      l.append(head, bar);
+      const rgt = mk("div", "jp-num");
+      rgt.appendChild(mk("b", "", money(x.gross)));
+      const pv = JP.sun === jpOpenSun() ? 0 : prev.get(normalizeKeySimple(x.name));
+      if (pv) {
+        const d = Math.round(((x.gross - pv) / pv) * 100);
+        rgt.appendChild(mk("small", d >= 0 ? "up" : "down", `${d >= 0 ? "▲" : "▼"} ${Math.abs(d)} %`));
+      } else if (x.gross && JP.sun !== jpOpenSun()) rgt.appendChild(mk("small", "muted", "nuevo"));
+      r.append(l, rgt);
+      box.appendChild(r);
+    });
+    if (list.length > 5) {
+      const more = mk("button", "ghost jp-more", JP.all ? "Ver solo los 5 primeros" : `Ver los ${list.length}`);
+      more.type = "button";
+      more.addEventListener("click", () => {
+        JP.all = !JP.all;
+        renderRanking(w, p);
+      });
+      box.appendChild(more);
+    }
+  }
+
+  $("jp-prev").addEventListener("click", () => {
+    JP.sun = jpIsoAdd(JP.sun || jpDefaultSun(), -7);
+    load();
+  });
+  $("jp-next").addEventListener("click", () => {
+    JP.sun = jpIsoAdd(JP.sun || jpDefaultSun(), 7);
+    load();
+  });
+  $("jp-refresh").addEventListener("click", async () => {
+    const b = $("jp-refresh");
+    b.disabled = true;
+    status("Pidiendo al bot lo último del canal…");
+    try {
+      const tok = await cloud.token();
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 60000);
+      await fetch(`${BADU_CLOUD_URL}/functions/v1/leer-logs`, {
+        method: "POST",
+        headers: { apikey: BADU_CLOUD_KEY, Authorization: `Bearer ${tok || BADU_CLOUD_KEY}`, "Content-Type": "application/json" },
+        body: "{}",
+        signal: ctl.signal,
+      }).finally(() => clearTimeout(timer));
+    } catch {
+      // si el bot no responde se usa lo ya guardado
+    }
+    b.disabled = false;
+    load(true);
+  });
+
+  let first = true;
+  const onOpen = () => {
+    if (!allowed()) return;
+    if (first) {
+      first = false;
+      JP.sun = jpDefaultSun();
+    }
+    load();
+  };
+  // Solo al entrar en la pestana (no con cada cambio de clase, como "is-loading").
+  let wasActive = root.classList.contains("is-active");
+  new MutationObserver(() => {
+    const on = root.classList.contains("is-active");
+    if (on && !wasActive) onOpen();
+    wasActive = on;
+  }).observe(root, { attributes: true, attributeFilter: ["class"] });
+  if (wasActive) onOpen();
+}
+
+
 function setupTabs() {
   const tabs = document.querySelectorAll(".tab");
   const panels = document.querySelectorAll(".tab-panel");
@@ -2137,6 +2542,8 @@ function setupTabs() {
     tab.addEventListener("click", async () => {
       const target = tab.dataset.tabTarget;
       const zone = TAB_PASSWORD_ZONES[target];
+      // El Panel es solo del Jefe Tribal (y solo con la nube).
+      if (target === "tab-jefe" && !(cloudOn() && isJefe() && AUTH.tribal)) return;
       if (zone && cloudOn()) {
         // Con la nube manda la sesion: solo los Jefes entran, sin contrasena.
         if (!isJefe()) return;
@@ -6203,3 +6610,4 @@ setupCaja();
 setupContabilidad();
 setupCrafteos();
 setupSorteo();
+setupPanelJefe();

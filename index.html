@@ -68,6 +68,7 @@
       <button type="button" class="tab" data-tab-target="tab-conta"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><path d="M9 13h8M9 17h6"/></svg><span>Pagos</span><svg class="tab-lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
       <button type="button" class="tab" data-tab-target="tab-craft"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4l6 6-9 9H5v-6z"/><path d="M12 6l6 6"/></svg><span>Crafteos</span><svg class="tab-lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
       <button type="button" class="tab" data-tab-target="tab-sorteo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.6"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4M5.3 5.3l2.8 2.8M15.9 15.9l2.8 2.8M18.7 5.3l-2.8 2.8M8.1 15.9l-2.8 2.8"/><circle cx="16.3" cy="8.9" r="1.1" fill="currentColor" stroke="none"/></svg><span>Sorteo</span><svg class="tab-lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
+      <button type="button" class="tab tab-jefe" data-tab-target="tab-jefe"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg><span>Panel</span></button>
     </nav>
     <button type="button" class="rail-btn" id="rail-products" title="Gestión de Productos"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z"/></svg><span>Productos</span></button>
   </aside>
@@ -460,6 +461,39 @@
       <button type="button" id="m-view-ticket">Ver ticket <span id="m-ticket-count">(0)</span></button>
     </div>
 
+    <section id="tab-jefe" class="tab-panel" aria-label="Panel del Jefe Tribal">
+      <div class="jp-head">
+        <div>
+          <h2>📊 Panel del Jefe Tribal</h2>
+          <p class="muted jp-status" id="jp-status">Abre la pestaña para cargar la semana.</p>
+        </div>
+        <div class="jp-nav">
+          <button type="button" class="ghost jp-arrow" id="jp-prev" title="Semana anterior" aria-label="Semana anterior">◀</button>
+          <b id="jp-week">Semana</b>
+          <button type="button" class="ghost jp-arrow" id="jp-next" title="Semana siguiente" aria-label="Semana siguiente">▶</button>
+          <button type="button" class="ghost" id="jp-refresh" title="Pide al bot las últimas facturas del Discord">🔄 Actualizar</button>
+        </div>
+      </div>
+      <div class="jp-kpis">
+        <div class="jp-kpi" id="jp-k1"></div>
+        <div class="jp-kpi" id="jp-k2"></div>
+        <div class="jp-kpi" id="jp-k3"></div>
+        <div class="jp-kpi" id="jp-k4"></div>
+      </div>
+      <div class="jp-grid">
+        <section class="card jp-card jp-wide">
+          <div class="jp-card-h"><h3>Últimas 8 semanas</h3>
+            <div class="jp-legend"><span><i class="jp-sw a"></i>Vendido</span><span><i class="jp-sw b"></i>Nóminas</span><span><i class="jp-sw c"></i>Queda para el Badulaque</span></div>
+          </div>
+          <div id="jp-chart" class="jp-chart"></div>
+          <p class="muted jp-note" id="jp-chart-note" hidden>* Semana sin cerrar en Pagos: estimada con las facturas del Discord, sin rascas.</p>
+        </section>
+        <section class="card jp-card"><div class="jp-card-h"><h3>⚠️ Para revisar</h3></div><div id="jp-alerts"></div></section>
+        <section class="card jp-card"><div class="jp-card-h"><h3>🏆 Ranking de ventas</h3></div><div id="jp-rank"></div></section>
+        <section class="card jp-card"><div class="jp-card-h"><h3>🛒 Mejores clientes</h3></div><div id="jp-clients"></div></section>
+        <section class="card jp-card"><div class="jp-card-h"><h3>👥 Plantilla esta semana</h3></div><div id="jp-plant"></div></section>
+      </div>
+    </section>
     <footer class="app-version">Versión 33 · Empleados como Aguila Motors</footer>
   </main>
   </div>

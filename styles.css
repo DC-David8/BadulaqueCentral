@@ -1168,3 +1168,70 @@ select.text-input.emp-dc-sel { width: auto; flex: 0 0 auto; height: 34px; paddin
   .emp-dc-bar #emp-dc-week { min-width: 0; flex: 1; }
 }
 @media (max-width: 520px) { .baja-tipos { grid-template-columns: 1fr; } }
+
+/* ==========================================================================
+   v34 · Panel del Jefe Tribal (como el Panel del Jefe de Aguila Motors)
+   ========================================================================== */
+.tab.tab-jefe { display: none; }
+body.cloud-mode.role-tribal .tab.tab-jefe { display: flex; }
+.jp-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 6px 0 14px; }
+.jp-head h2 { margin: 0; font-size: 1.35rem; }
+.jp-status { margin: 4px 0 0; font-size: 12.5px; }
+.jp-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.jp-nav b { font-family: var(--f-mono); font-size: 13px; min-width: 190px; text-align: center; }
+.jp-arrow { width: 38px; padding: 0; }
+#tab-jefe.is-loading .jp-kpis, #tab-jefe.is-loading .jp-grid { opacity: 0.55; transition: opacity 0.15s; }
+.jp-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.jp-kpi { min-width: 0; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); border-bottom: 3px solid var(--accent-dark); background: var(--key); }
+.jp-kpi:nth-child(3) { border-bottom-color: #2f9e6e; }
+.jp-kpi:nth-child(4) { border-bottom-color: #c99a3a; }
+.jp-l { font: 600 11px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.jp-v { margin: 6px 0 2px; font: 700 1.55rem var(--f-mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jp-v.jp-v-name { font: 700 1.15rem var(--f-ui); white-space: normal; line-height: 1.25; }
+.jp-d { font-size: 12px; }
+.jp-d.up, .jp-num small.up { color: var(--ok); }
+.jp-d.down, .jp-num small.down { color: var(--danger); }
+.jp-s { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.jp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.jp-card { margin: 0; min-width: 0; }
+.jp-wide { grid-column: 1 / -1; }
+.jp-card-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.jp-card-h h3 { margin: 0; font-size: 1rem; }
+.jp-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); }
+.jp-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.jp-sw.a { background: #3aa0ff; } .jp-sw.b { background: #4b5563; } .jp-sw.c { background: #7cffc4; height: 3px; vertical-align: 2px; }
+.jp-chart svg { display: block; }
+.jp-note { margin: 6px 0 0; font-size: 12px; }
+.jp-alert { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.jp-alert:last-of-type { border-bottom: 0; }
+.jp-alert b { display: block; font-size: 14px; }
+.jp-alert small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.jp-ai { font-size: 18px; line-height: 1.2; }
+.jp-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.jp-row:last-of-type { border-bottom: 0; }
+.jp-row-l { flex: 1; min-width: 0; }
+.jp-row-l > b, .jp-row-l > small { display: block; }
+.jp-rk-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.jp-pos { font-family: var(--f-mono); color: var(--muted); }
+.jp-star { font-size: 14px; }
+.jp-bar { height: 6px; margin-top: 6px; border-radius: 99px; background: var(--key-2); overflow: hidden; }
+.jp-bar span { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+.jp-bar span.lo { background: var(--warn); }
+.jp-num { text-align: right; font-family: var(--f-mono); white-space: nowrap; }
+.jp-num small { display: block; font-size: 11.5px; }
+.jp-mv { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.jp-mv:last-child { border-bottom: 0; }
+.jp-mv b { font-family: var(--f-mono); }
+.jp-more { margin-top: 8px; width: 100%; }
+.jp-empty { margin: 4px 0; }
+@media (max-width: 900px) {
+  .jp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .jp-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  body.cloud-mode.role-tribal .tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .jp-v { font-size: 1.25rem; }
+  .jp-nav { width: 100%; }
+  .jp-nav b { flex: 1; min-width: 0; font-size: 12px; }
+  #jp-refresh { width: 100%; }
+}
