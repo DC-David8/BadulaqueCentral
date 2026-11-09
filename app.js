@@ -977,9 +977,9 @@ function movDiscordText(up, desc, bajas, sun, cierre, star = null) {
     blocks.push(`# ${DC_EMOJI_AGUILA} MOVIMIENTOS DE PERSONAL DE LA SEMANA - BADULAQUE CENTRAL ${DC_EMOJI_MANZANA}\n-# Semana del ${ascDM(sun)} al ${ascDM(ascDay(sun, 6))}\n\n${parts.join("\n\n")}\n\n${cierre}`);
   }
   if (stars.length) {
-    const names = stars.map(who);
-    const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}` : names[0];
-    const line = names.length > 1 ? `${list} sois el ${EMPLOYEE_OF_WEEK_TAG}, ${star.frase}` : `${list} eres el ${EMPLOYEE_OF_WEEK_TAG}, ${star.frase}`;
+    // En cita, como en Aguila Motors: una linea por persona y la frase en cursiva.
+    const frase = star.frase.charAt(0).toUpperCase() + star.frase.slice(1);
+    const line = `${stars.map((it) => `> 👑 ${who(it)} · ${EMPLOYEE_OF_WEEK_TAG}`).join("\n")}\n> *${frase}*`;
     const head = `# ${DC_EMOJI_SALUDO} RECONOCIMIENTO SEMANAL ${DC_EMOJI_SALUDO}`;
     blocks.push(blocks.length ? `${head}\n\n${line}` : `${head}\n-# Semana del ${ascDM(sun)} al ${ascDM(ascDay(sun, 6))} · Badulaque Central\n\n${line}`);
   }

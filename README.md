@@ -272,6 +272,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 37 · 8 de noviembre de 2026 · Reconocimiento en cita
+- El reconocimiento al empleado de la semana del mensaje para Discord va en formato cita, como en Aguila Motors: `> 👑 @empleado · @Empleado de la Semana` y debajo la frase en cursiva.
+
 ### Versión 36 · 8 de noviembre de 2026 · Más frases para Discord
 - Empleado de la semana: 20 felicitaciones al azar (antes 6) y 8 para empates (antes 3), sin cifras.
 - Ascensos: 30 felicitaciones por persona (antes 16) y 25 frases de cierre (antes 10).
