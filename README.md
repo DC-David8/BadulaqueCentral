@@ -272,6 +272,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 36 · 8 de noviembre de 2026 · Más frases para Discord
+- Empleado de la semana: 20 felicitaciones al azar (antes 6) y 8 para empates (antes 3), sin cifras.
+- Ascensos: 30 felicitaciones por persona (antes 16) y 25 frases de cierre (antes 10).
+
 ### Versión 35 · 8 de noviembre de 2026 · Empleado de la semana en Discord
 - El mensaje de **📣 Para Discord** añade el **RECONOCIMIENTO SEMANAL** al empleado de la semana, con su rol etiquetado y una felicitación al azar. Sale solo el del bono de esa semana en Pagos; se puede cambiar o quitar («Nadie»). Si no hay movimientos, se puede mandar solo el reconocimiento.
 - Emojis del servidor en el mensaje: águila y manzana en el título, panda saludando en el reconocimiento.
