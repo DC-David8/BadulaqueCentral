@@ -272,6 +272,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 39 · 14 de noviembre de 2026 · Strikes para Discord
+- **📣 Para Discord** tiene, debajo del mensaje de movimientos, el bloque **⚠️ Strikes de la semana · mensaje aparte** (como en Aguila Motors): los strikes de la semana cerrada en Pagos (con los puestos o quitados a mano), una casilla por persona, vista previa, 🎲 Otra frase (15 de cierre) y **📋 Copiar strikes para Discord**.
+- Cada línea lleva la mención, el rol, el rol de warn que le toca (1.º, 2.º o 3.º, con «despido» en el 3.º) y el motivo. Etiqueta a Trabajadores y firma la Jefatura.
+
 ### Versión 38 · 14 de noviembre de 2026 · Semana para Discord al cerrar
 - **📣 Para Discord** pasa a la semana nueva en cuanto se cierra: usa la hora de España (como Pagos) y, si la semana ya se cerró en Pagos, esa. Antes, en Guatemala, había que esperar al domingo.
 - Al cerrar una semana, la pestaña salta sola a ella; con ◀ se ven las anteriores.
