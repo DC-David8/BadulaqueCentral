@@ -272,6 +272,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 41 · 14 de noviembre de 2026 · Inactividad solo de quien cobra
+- La inactividad (💤) ya no se aplica a quien tiene **«No cobra»**: no sale en el listado ni en la ficha de Gestión de Empleados, ni en el filtro «Sin facturar», ni en los avisos y el ranking del Panel del Jefe Tribal.
+
 ### Versión 40 · 14 de noviembre de 2026 · Pagas con formato
 - **Copiar para Discord** (Pagos) y **Copiar todo** sacan el mensaje de pagas con formato, como en Aguila Motors: título, semana y fecha de pago; **💸 Nóminas** en cita (💰 cobra, ⚠️ con strike y el rol de su warn, ⏳ sin IBAN, 🏆 empleado de la semana), **🏆 Empleado de la Semana** con su bono y **🏦 Resumen** con cuántos cobran y el total retirado de la caja. Firma la Jefatura.
 - Los «No cobra» quedan fuera del mensaje del botón de Pagos y el aviso dice el total a retirar.

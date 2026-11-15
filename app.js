@@ -682,7 +682,8 @@ async function inactSaveDias(d) {
 // { days, last, level (0-3), more } · more = no facturo en toda la ventana.
 // El Jefe Tribal no lleva aviso.
 function inactOf(e) {
-  if (!INACT.ok || !e || isOwnerRank(e.rank)) return null;
+  // Ni el Jefe Tribal ni quien tiene «No cobra»: su actividad no se vigila.
+  if (!INACT.ok || !e || isOwnerRank(e.rank) || isEmployeeNoPay(fullName(e))) return null;
   const now = Date.now();
   const t = INACT.last.get(normalizeKeySimple(fullName(e)));
   const altaDay = empDatesOf(e).altaAt;
