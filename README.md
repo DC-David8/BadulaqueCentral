@@ -272,6 +272,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 40 · 14 de noviembre de 2026 · Pagas con formato
+- **Copiar para Discord** (Pagos) y **Copiar todo** sacan el mensaje de pagas con formato, como en Aguila Motors: título, semana y fecha de pago; **💸 Nóminas** en cita (💰 cobra, ⚠️ con strike y el rol de su warn, ⏳ sin IBAN, 🏆 empleado de la semana), **🏆 Empleado de la Semana** con su bono y **🏦 Resumen** con cuántos cobran y el total retirado de la caja. Firma la Jefatura.
+- Los «No cobra» quedan fuera del mensaje del botón de Pagos y el aviso dice el total a retirar.
+
 ### Versión 39 · 14 de noviembre de 2026 · Strikes para Discord
 - **📣 Para Discord** tiene, debajo del mensaje de movimientos, el bloque **⚠️ Strikes de la semana · mensaje aparte** (como en Aguila Motors): los strikes de la semana cerrada en Pagos (con los puestos o quitados a mano), una casilla por persona, vista previa, 🎲 Otra frase (15 de cierre) y **📋 Copiar strikes para Discord**.
 - Cada línea lleva la mención, el rol, el rol de warn que le toca (1.º, 2.º o 3.º, con «despido» en el 3.º) y el motivo. Etiqueta a Trabajadores y firma la Jefatura.

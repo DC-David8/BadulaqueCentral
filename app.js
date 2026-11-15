@@ -4685,19 +4685,41 @@ function setupEmployeesModal(state, refreshPagos) {
     renderTotalsRows();
   });
 
-  // Texto para el canal de pagas (el mismo de "Copiar todo").
-  function discordPayText() {
-    return totalsRows
-      .map((r) => {
-        let line = r.noPay
-          ? `* ${labelForCopy(r)}: ${NO_PAY_TEXT}`
-          : `* ${labelForCopy(r)}: ${payForCopy(r)} · ${ibanForCopy(r)}`;
-        if (isEmployeeOfWeek(r)) line += ` ${EMPLOYEE_OF_WEEK_TAG}`;
-        if (r.strike) line += ` ${strikeText(r.strikeN, r.gross, r.strikeWhy)}`;
-        return line;
-      })
-      .join("\n");
+  // Texto para el canal de pagas (el mismo de "Copiar todo"), con formato como en
+  // Aguila Motors: título, semana, una línea por empleado de mayor a menor paga,
+  // Empleado de la Semana y total retirado de la caja.
+  function discordPayText(rows = totalsRows) {
+    const dm = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
+    const from = byId("dlog-from")?.value || "";
+    const to = byId("dlog-to")?.value || "";
+    const today = new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const who = (r) => (r.discord ? `<@${r.discord}>` : `**${r.name}**`);
+    const rk = (r) => (r.rank ? ` · ${r.rank}` : "");
+    const owner = (r) => isOwnerRank(r.rank);
+    const sorted = rows
+      .filter((r) => !(owner(r) && !(r.toPay > 0)))
+      .slice()
+      .sort((x, y) => (x.noPay ? 1 : 0) - (y.noPay ? 1 : 0) || (y.toPay || 0) - (x.toPay || 0) || x.name.localeCompare(y.name, "es"));
+    const lines = sorted.map((r) => {
+      if (r.noPay) return `> ➖ ${who(r)}${rk(r)} — *${NO_PAY_TEXT}*`;
+      const icon = !r.iban ? "⏳" : r.strike ? "⚠️" : "💰";
+      const iban = r.iban ? `\`${r.iban}\`` : "*IBAN pendiente*";
+      const extra = `${isEmployeeOfWeek(r) ? " 🏆" : ""}${r.strike ? ` · ${strikeTag(r.strikeN)}` : ""}`;
+      return `> ${icon} ${who(r)}${rk(r)} — **${fmtMoney(r.toPay)}** · ${iban}${extra}`;
+    });
+    const eow = sorted.filter((r) => r.bonus && !r.noPay);
+    const paying = rows.filter((r) => !r.noPay && r.toPay > 0).length;
+    const parts = [
+      `# ${DC_EMOJI_AGUILA} PAGAS DE LA SEMANA - BADULAQUE CENTRAL ${DC_EMOJI_MANZANA}\n-# ${from ? `Semana del ${dm(from)}${to ? ` al ${dm(to)}` : ""} · ` : ""}pagadas el ${today}`,
+      `## 💸 Nóminas\n${lines.join("\n")}`,
+    ];
+    if (eow.length) parts.push(`## 🏆 Empleado de la Semana\n${eow.map((r) => `> 👑 ${who(r)} · ${EMPLOYEE_OF_WEEK_TAG} — su paga incluye el **bono de ${fmtMoney(r.bonus)}**`).join("\n")}`);
+    parts.push(`## 🏦 Resumen\n> 👥 **${paying}** ${paying === 1 ? "empleado cobra" : "empleados cobran"} esta semana\n> 💵 **Total retirado de la caja: ${fmtMoney(bankTotalOf(rows))}**`);
+    parts.push(`-# — ${ROLE_TAG_JEFATURA} · Badulaque Central`);
+    return parts.join("\n\n");
   }
+  // Suma solo a quien cobra (los "No cobra" no cuentan).
+  const bankTotalOf = (rows) => rows.reduce((acc, r) => acc + (r.noPay ? 0 : r.toPay), 0);
 
   byId("employees-copy-all").addEventListener("click", async () => {
     if (!totalsRows.length) return;
@@ -4719,11 +4741,20 @@ function setupEmployeesModal(state, refreshPagos) {
       alert("No hay empleados en la lista. Entra en 'Gestión de empleados' para añadirlos.");
       return;
     }
-    const text = discordPayText();
+    // Los marcados como "No cobra" no salen en el mensaje de pagas.
+    const rows = totalsRows.filter((r) => !r.noPay);
+    const skipped = totalsRows.length - rows.length;
+    if (!rows.length) {
+      alert("Todos los empleados están marcados como «No cobra»: no hay nada que copiar.");
+      return;
+    }
+    const text = discordPayText(rows);
     const ok = await copyText(text);
     if (!ok) openCopyFallback(text);
     if (status) {
-      status.textContent = ok ? `✔ Copiado: ${totalsRows.length} empleados. Pégalo en el canal de pagas.` : "";
+      status.textContent = ok
+        ? `✔ Copiado: ${rows.length} empleados · Total a retirar ${fmtMoney(bankTotalOf(rows))}` + (skipped ? ` · ${skipped} «No cobra» fuera de la lista` : "") + ". Pégalo en el canal de pagas."
+        : "";
       setTimeout(() => (status.textContent = ""), 4000);
     }
   });
