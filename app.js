@@ -876,8 +876,22 @@ function parseRankLog(texto) {
 const ascDay = (d, add = 0) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + add);
 const ascSunday = (d) => ascDay(d, -d.getDay());
 const ascDM = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-// Semana que se anuncia por defecto: la ultima cerrada (los cambios se dan al cerrarla).
-const ascDefaultWeek = () => ascSunday(ascDay(new Date(), -7));
+// Semana que se anuncia por defecto: la ultima cerrada (los cambios se dan al
+// cerrarla). Con la hora de Espana, como Pagos: el sabado por la noche en
+// Guatemala ya es domingo alli y la semana ya esta cerrada. Si en Pagos ya se
+// cerro una semana mas reciente, manda esa.
+const ascDefaultWeek = () => {
+  const md = dlogMadridParts(Date.now());
+  const open = new Date(md.y, md.m - 1, md.d - md.wd);
+  let sun = ascDay(open, -7);
+  for (const w of STRIKE_HIST || []) {
+    const [y, m, d] = String(w.semana || "").split("-").map(Number);
+    if (!y) continue;
+    const t = new Date(y, m - 1, d);
+    if (t > sun && t <= open) sun = t;
+  }
+  return sun;
+};
 // Cambios de rango de la semana que empieza el domingo `sun`: los dados desde
 // su sabado de cierre hasta el sabado siguiente. Si alguien cambia dos veces
 // se junta en uno (de su primer rango al ultimo).
@@ -5620,8 +5634,14 @@ function setupEmployeesAdminModal({ onChanged }) {
   async function renderDiscordTab(force = false) {
     const list = byId("emp-dc-list");
     if (!list) return;
-    if (!dc.sun) dc.sun = ascDefaultWeek();
+    if (!dc.hist) {
+      dc.hist = true;
+      await loadStrikeHist().catch(() => {});
+    }
     const max = ascDefaultWeek();
+    // Al cerrar una semana nueva, se salta sola a ella.
+    if (!dc.sun || +max !== dc.maxSeen) dc.sun = max;
+    dc.maxSeen = +max;
     if (dc.sun > max) dc.sun = max;
     byId("emp-dc-week").textContent = `Semana del ${ascDM(dc.sun)} al ${ascDM(ascDay(dc.sun, 6))}`;
     byId("emp-dc-next").disabled = +dc.sun >= +max;
@@ -6013,8 +6033,9 @@ function setupEmployeesAdminModal({ onChanged }) {
   });
 
   modal.addEventListener("badu-open", () => {
-    // Siempre se abre en el Listado.
+    // Siempre se abre en el Listado (y vuelve a mirar las semanas cerradas).
     tab = "list";
+    dc.hist = false;
     modal.querySelectorAll(".emp-tab").forEach((b) => b.classList.toggle("is-on", b.dataset.empTab === "list"));
     modal.querySelectorAll(".emp-pane").forEach((p) => (p.hidden = p.dataset.empPane !== "list"));
     fillRankSelect(rankInput, rankInput.value);

@@ -272,6 +272,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 38 · 14 de noviembre de 2026 · Semana para Discord al cerrar
+- **📣 Para Discord** pasa a la semana nueva en cuanto se cierra: usa la hora de España (como Pagos) y, si la semana ya se cerró en Pagos, esa. Antes, en Guatemala, había que esperar al domingo.
+- Al cerrar una semana, la pestaña salta sola a ella; con ◀ se ven las anteriores.
+
 ### Versión 37 · 8 de noviembre de 2026 · Reconocimiento en cita
 - El reconocimiento al empleado de la semana del mensaje para Discord va en formato cita, como en Aguila Motors: `> 👑 @empleado · @Empleado de la Semana` y debajo la frase en cursiva.
 
