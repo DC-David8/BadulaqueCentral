@@ -150,6 +150,8 @@ const PRODUCT_CAT = {
   // Con alcohol o efectos, y la Cimarrona (quita los efectos).
   "cerveza": "alcohol", "cerveza mixta": "alcohol", "cortadito": "alcohol", "granizado": "alcohol", "michelada": "alcohol", "cimarrona": "alcohol",
 };
+// Aviso corto que sale en la tecla de la Caja (y cuenta para el buscador).
+const PRODUCT_NOTE = { "cimarrona": "Quita efectos" };
 const productCatOk = (c) => PRODUCT_CATS.some((x) => x.id === c);
 const productCatLabel = (c) => {
   const x = PRODUCT_CATS.find((k) => k.id === c) || PRODUCT_CATS[PRODUCT_CATS.length - 1];
@@ -3525,7 +3527,7 @@ function setupCaja() {
       const skipFavs = !q && catSel === "all" && sec.dataset.cat !== "fav";
       sec.querySelectorAll(".product-btn").forEach((btn) => {
         const key = normalizeKeySimple(btn.dataset.name || "");
-        const ok = secOk && (!q || key.includes(q)) && !(skipFavs && favs.has(key));
+        const ok = secOk && (!q || key.includes(q) || normalizeKeySimple(PRODUCT_NOTE[key] || "").includes(q)) && !(skipFavs && favs.has(key));
         btn.hidden = !ok;
         if (ok) n++;
       });
@@ -3590,7 +3592,7 @@ function setupCaja() {
     button.innerHTML = `
       <img src="${escapeHtml(getProductIcon(product))}" alt="${escapeHtml(product.name)}" />
       <strong>${escapeHtml(product.name)}</strong>
-      <small>${fmtMoney(product.price)}</small>
+      <small>${fmtMoney(product.price)}${PRODUCT_NOTE[key] ? ` <span class="prod-note">${escapeHtml(PRODUCT_NOTE[key])}</span>` : ""}</small>
       <span class="qty-badge"></span>
       <span class="fav-star${fav ? " is-on" : ""}" role="button" aria-label="${fav ? "Quitar de favoritos" : "Marcar como favorito"}" title="${fav ? "Quitar de favoritos" : "Marcar como favorito"}">${fav ? "★" : "☆"}</span>
     `;

@@ -1265,3 +1265,4 @@ body.cloud-mode.role-tribal .tab.tab-jefe { display: flex; }
 }
 .emp-dc-star { width: 18px; text-align: center; }
 .emp-dc-st { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px dashed rgba(255,255,255,.12); }
+.prod-note { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 99px; border: 1px solid color-mix(in srgb, #4fc3a1 55%, transparent); background: rgba(79, 195, 161, 0.12); color: #7fe0c2; font: 700 10px var(--f-ui); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; vertical-align: 1px; }

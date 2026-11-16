@@ -272,6 +272,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 47 · 16 de noviembre de 2026 · Cimarrona: quita efectos
+- La tecla de la **Cimarrona** en la Caja lleva el aviso «Quita efectos». Buscar «quita» o «efectos» también la encuentra. En el ticket y en el concepto sigue saliendo solo el nombre.
+
 ### Versión 46 · 16 de noviembre de 2026 · Jefatura siempre etiquetada
 - En los mensajes para Discord de movimientos y de strikes, cualquier mención a la Jefatura dentro del texto (frases de cierre, motivos) sale con la etiqueta de su rol, además de la firma.
 
