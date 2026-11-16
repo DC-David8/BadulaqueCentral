@@ -155,6 +155,58 @@ const productCatLabel = (c) => {
   const x = PRODUCT_CATS.find((k) => k.id === c) || PRODUCT_CATS[PRODUCT_CATS.length - 1];
   return `${x.icon} ${x.label}`;
 };
+// Tabla de precios para Discord (Gestión de Productos → 📣 Tabla de precios).
+// Sale de los productos y precios de la página, así que nunca queda atrasada.
+const ROLE_TAG_CIUDADANO = "<@&1364613906890227799>";
+const BADU_WEB_URL = "https://dc-david8.github.io/BadulaqueCentral/";
+const PRICE_EMOJI = {
+  "menu badulaque": "⭐", "alitas": "🍗", "bocadillo de bacon": "🥓", "bocadillo iberico": "🥖", "bocadillo de lomo": "🥩",
+  "bocadillo de tortilla": "🍳", "bocadillo vegetal": "🥬", "donas": "🍩", "pan": "🍞", "pizza": "🍕", "tacos de birria": "🌮",
+  "agua": "💧", "energy": "⚡", "refresco de cola": "🥤", "refresco de limon": "🍋",
+  "cerveza": "🍺", "cerveza mixta": "🍻", "cortadito": "🍵", "granizado": "🧊", "michelada": "🍹", "cimarrona": "🌿",
+  "bayeta": "🧼", "mochila de outfits": "🎒", "spray": "🎨", "spray remove": "🧴", "telefono": "📞", "vaper": "💨", "venda": "🩹",
+  "recarga de cachimba": "💨",
+};
+// Nombre con tildes y nota para el anuncio (en la Caja van como en el juego).
+const PRICE_NAME = { "menu badulaque": "Menú Badulaque", "bocadillo iberico": "Bocadillo Ibérico", "refresco de limon": "Refresco de Limón", "telefono": "Teléfono", "spray remove": "Spray Remover" };
+const PRICE_NOTE = {
+  "cimarrona": "*quita los efectos*",
+  "spray": "*para usarlo: chat (**t**) y `/spray`*",
+  "spray remove": "*para quitarlo: chat (**t**) y `/sprayremover`*",
+};
+// De dónde saca el empleado lo que no se craftea.
+const PRICE_ORIGIN = { "bayeta": "almacen", "recarga de cachimba": "exterior" };
+const RASCA_PRICE = 2000;
+const RASCA_MAX = 10;
+function priceTableText(forStaff) {
+  const usd = (v) => `$${Math.round(v || 0).toLocaleString("en-US")}`;
+  const byName = (a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+  const first = (p) => (normalizeKeySimple(p.name) === PRODUCT_FIRST ? 0 : 1);
+  const line = (p) => {
+    const k = normalizeKeySimple(p.name);
+    return `> ${PRICE_EMOJI[k] || "🛍️"} **${PRICE_NAME[k] || p.name}** · \`${usd(p.price)}\`${PRICE_NOTE[k] ? ` — ${PRICE_NOTE[k]}` : ""}`;
+  };
+  const all = getAllProducts();
+  const origin = (p) => PRICE_ORIGIN[normalizeKeySimple(p.name)] || "";
+  const exterior = all.filter((p) => origin(p) === "exterior").sort(byName);
+  const almacen = forStaff ? all.filter((p) => origin(p) === "almacen").sort(byName) : [];
+  const rest = all.filter((p) => !exterior.includes(p) && !almacen.includes(p));
+  const cats = PRODUCT_CATS.map((c) => ({ c, list: rest.filter((p) => p.cat === c.id).sort((a, b) => first(a) - first(b) || byName(a, b)) })).filter((x) => x.list.length);
+  const parts = ["# 🛒 TABLA DE PRECIOS — BADULAQUE CENTRAL"];
+  if (forStaff) {
+    parts.push(`## 🌐 Página web\n> [Badulaque Central](${BADU_WEB_URL})`);
+    parts.push(`## 🍩 Menú de crafteo\n${cats.map((x) => `**${x.c.icon} ${x.c.label}**\n${x.list.map(line).join("\n")}`).join("\n")}`);
+    if (almacen.length) parts.push(`## 🧺 Almacén\n${almacen.map(line).join("\n")}`);
+    parts.push(`## 🎫 Menú F6\n> 🎟️ **Rasca y Gana** · \`${usd(RASCA_PRICE)}\` c/u — máximo **${RASCA_MAX} por venta**`);
+  } else {
+    for (const x of cats) parts.push(`## ${x.c.icon} ${x.c.label}\n${x.list.map(line).join("\n")}`);
+  }
+  if (exterior.length) parts.push(`## 🚬 Exterior de la parte superior\n${exterior.map(line).join("\n")}`);
+  if (!forStaff) parts.push(`## 🎟️ Rasca y Gana\n> \`${usd(RASCA_PRICE)}\` cada uno · máximo **${RASCA_MAX} por venta**`);
+  parts.push(`💵 *Pago en efectivo: se descuenta de ${forStaff ? "la billetera del cliente" : "tu billetera"}.*\n-# ${forStaff ? ROLE_TAG_TRABAJADORES : ROLE_TAG_CIUDADANO} · Badulaque Central`);
+  return parts.join("\n\n");
+}
+
 // Favoritos de cada cajero: solo en su navegador.
 const PRODUCT_FAVS_STORAGE_KEY = "badu_product_favs_v1";
 function loadProductFavs() {
@@ -3070,6 +3122,7 @@ function setupProductsAdminModal(onProductsChanged) {
     b.addEventListener("click", () => {
       showSubtab(b.dataset.subtabTarget);
       if (b.dataset.subtabTarget === "prod-tab-edit") renderAdminTable();
+      if (b.dataset.subtabTarget === "prod-tab-prices") renderPriceTable();
     });
   });
 
@@ -3087,6 +3140,35 @@ function setupProductsAdminModal(onProductsChanged) {
       pendingImage = "";
       errorEl.textContent = String(err?.message || err);
     }
+  });
+
+  // 📣 Tabla de precios para Discord (ciudadanos o empleados).
+  let priceStaff = false;
+  function renderPriceTable() {
+    const t = priceTableText(priceStaff);
+    byId("price-prev").textContent = t;
+    byId("price-for-citizens").classList.toggle("is-on", !priceStaff);
+    byId("price-for-staff").classList.toggle("is-on", priceStaff);
+    const len = byId("price-len");
+    // Discord corta los mensajes a 2.000 caracteres (4.000 con Nitro).
+    len.textContent = t.length > 2000 ? `⚠ ${t.length} caracteres: pasa de los 2.000 de Discord (con Nitro caben 4.000)` : `${t.length} de 2.000 caracteres`;
+    len.classList.toggle("error-text", t.length > 2000);
+  }
+  byId("price-for-citizens").addEventListener("click", () => {
+    priceStaff = false;
+    renderPriceTable();
+  });
+  byId("price-for-staff").addEventListener("click", () => {
+    priceStaff = true;
+    renderPriceTable();
+  });
+  byId("price-copy").addEventListener("click", async () => {
+    const t = priceTableText(priceStaff);
+    const ok = await copyText(t);
+    if (!ok) openCopyFallback(t);
+    const b = byId("price-copy");
+    b.textContent = ok ? "✔ Copiada. Pégala en Discord" : "📋 Copiar tabla para Discord";
+    setTimeout(() => (b.textContent = "📋 Copiar tabla para Discord"), 1800);
   });
 
   searchEl.addEventListener("input", renderAdminTable);

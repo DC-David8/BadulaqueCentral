@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=44" />
+  <link rel="stylesheet" href="styles.css?v=45" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -495,7 +495,7 @@
         <section class="card jp-card"><div class="jp-card-h"><h3>👥 Plantilla esta semana</h3></div><div id="jp-plant"></div></section>
       </div>
     </section>
-    <footer class="app-version">Versión 44 · Productos por categorías</footer>
+    <footer class="app-version">Versión 45 · Tabla de precios para Discord</footer>
   </main>
   </div>
 
@@ -510,6 +510,7 @@
       <nav class="subtabs">
         <button type="button" class="subtab is-active" data-subtab-target="prod-tab-add">Agregar</button>
         <button type="button" class="subtab" data-subtab-target="prod-tab-edit">Editar / Quitar</button>
+        <button type="button" class="subtab" data-subtab-target="prod-tab-prices">📣 Tabla de precios</button>
       </nav>
 
       <section id="prod-tab-add" class="subtab-panel is-active">
@@ -560,6 +561,19 @@
             </thead>
             <tbody id="prod-admin-body"></tbody>
           </table>
+        </div>
+      </section>
+
+      <section id="prod-tab-prices" class="subtab-panel">
+        <p class="muted">Mensaje para Discord con los productos y precios que tiene ahora la página. Elige para quién es y cópialo.</p>
+        <div class="emp-acts price-who">
+          <button type="button" class="emp-chip is-on" id="price-for-citizens">🧍 Para ciudadanos</button>
+          <button type="button" class="emp-chip" id="price-for-staff">🧑‍💼 Para empleados</button>
+          <span class="muted emp-small" id="price-len"></span>
+        </div>
+        <pre class="emp-dc-prev" id="price-prev"></pre>
+        <div class="emp-acts">
+          <button type="button" class="primary" id="price-copy">📋 Copiar tabla para Discord</button>
         </div>
       </section>
     </form>
@@ -814,6 +828,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=44"></script>
+  <script src="app.js?v=45"></script>
 </body>
 </html>

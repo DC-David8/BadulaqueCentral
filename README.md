@@ -272,6 +272,10 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 45 · 16 de noviembre de 2026 · Tabla de precios para Discord
+- Gestión de Productos tiene la pestaña **📣 Tabla de precios**: genera el mensaje para Discord con los productos y precios que tiene la página en ese momento, por categorías y con el Menú Badulaque primero.
+- Dos versiones: **para ciudadanos** (etiqueta su rol) y **para empleados** (etiqueta a Trabajadores; lleva el enlace de la página y separa Menú de crafteo, Almacén, Menú F6 y Exterior). Avisa si pasa de los 2.000 caracteres de Discord.
+
 ### Versión 44 · 16 de noviembre de 2026 · Productos por categorías
 - La Caja ordena los productos por **secciones** (🍔 Comida, 🥤 Bebidas, 🍺 Alcohol y quitaefectos, 📦 Objetos), cada una por orden alfabético y con el **Menu Badulaque** abriendo la Comida. Cada tecla lleva el color de su categoría.
 - **Botones de categoría** encima de los productos para ver solo una; al buscar se busca en todas.
