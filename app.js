@@ -945,6 +945,18 @@ async function descensosSemana(sun, people) {
 const DC_EMOJI_AGUILA = "<:aguila:1469892536234414202>";
 const DC_EMOJI_MANZANA = "<:manzana:1469893121981677588>";
 const DC_EMOJI_SALUDO = "<:pandasaludo:1419702029781045388>";
+// Emojis animados del servidor para el mensaje de pagas.
+const PAY_EMOJI = {
+  nominas: "<a:richxp:1571680286637301810>",
+  cobra: "<a:dollabills9:1571680285295116374>",
+  medalla: "<a:winmedal:1571680272548626523>",
+  warn: "<a:agentwarning327:1571680281549865051>",
+  copa: "<a:cup:1571680277913145515>",
+  vip: "<a:vip:1571680276034363422>",
+  resumen: "<a:gifmeowthmoney:1571680270808252546>",
+  cobran: "<a:sa:1571680284418515077>",
+  total: "<a:almrichguy:1571680283248304284>",
+};
 // Felicitacion al empleado de la semana (se elige una al azar).
 const STAR_FRASES = [
   "tu desempeño es impoluto. ¡Sigue así!",
@@ -4703,19 +4715,19 @@ function setupEmployeesModal(state, refreshPagos) {
       .sort((x, y) => (x.noPay ? 1 : 0) - (y.noPay ? 1 : 0) || (y.toPay || 0) - (x.toPay || 0) || x.name.localeCompare(y.name, "es"));
     const lines = sorted.map((r) => {
       if (r.noPay) return `> ➖ ${who(r)}${rk(r)} — *${NO_PAY_TEXT}*`;
-      const icon = !r.iban ? "⏳" : r.strike ? "⚠️" : "💰";
+      const icon = !r.iban ? "⏳" : r.strike ? PAY_EMOJI.warn : PAY_EMOJI.cobra;
       const iban = r.iban ? `\`${r.iban}\`` : "*IBAN pendiente*";
-      const extra = `${isEmployeeOfWeek(r) ? " 🏆" : ""}${r.strike ? ` · ${strikeTag(r.strikeN)}` : ""}`;
+      const extra = `${isEmployeeOfWeek(r) ? ` ${PAY_EMOJI.medalla}` : ""}${r.strike ? ` · ${strikeTag(r.strikeN)}` : ""}`;
       return `> ${icon} ${who(r)}${rk(r)} — **${fmtMoney(r.toPay)}** · ${iban}${extra}`;
     });
     const eow = sorted.filter((r) => r.bonus && !r.noPay);
     const paying = rows.filter((r) => !r.noPay && r.toPay > 0).length;
     const parts = [
       `# ${DC_EMOJI_AGUILA} PAGAS DE LA SEMANA - BADULAQUE CENTRAL ${DC_EMOJI_MANZANA}\n-# ${from ? `Semana del ${dm(from)}${to ? ` al ${dm(to)}` : ""} · ` : ""}pagadas el ${today}`,
-      `## 💸 Nóminas\n${lines.join("\n")}`,
+      `## ${PAY_EMOJI.nominas} Nóminas\n${lines.join("\n")}`,
     ];
-    if (eow.length) parts.push(`## 🏆 Empleado de la Semana\n${eow.map((r) => `> 👑 ${who(r)} · ${EMPLOYEE_OF_WEEK_TAG} — su paga incluye el **bono de ${fmtMoney(r.bonus)}**`).join("\n")}`);
-    parts.push(`## 🏦 Resumen\n> 👥 **${paying}** ${paying === 1 ? "empleado cobra" : "empleados cobran"} esta semana\n> 💵 **Total retirado de la caja: ${fmtMoney(bankTotalOf(rows))}**`);
+    if (eow.length) parts.push(`## ${PAY_EMOJI.copa} Empleado de la Semana\n${eow.map((r) => `> ${PAY_EMOJI.vip} ${who(r)} · ${EMPLOYEE_OF_WEEK_TAG} — su paga incluye el **bono de ${fmtMoney(r.bonus)}**`).join("\n")}`);
+    parts.push(`## ${PAY_EMOJI.resumen} Resumen\n> ${PAY_EMOJI.cobran} **${paying}** ${paying === 1 ? "empleado cobra" : "empleados cobran"} esta semana\n> ${PAY_EMOJI.total} **Total retirado de la caja: ${fmtMoney(bankTotalOf(rows))}**`);
     parts.push(`-# — ${ROLE_TAG_JEFATURA} · Badulaque Central`);
     return parts.join("\n\n");
   }
