@@ -1034,6 +1034,8 @@ async function descensosSemana(sun, people) {
   return { desc, bajas };
 }
 // Un solo mensaje con ascensos, descensos y bajas (los apartados vacios no salen).
+// En los mensajes para Discord, «Jefatura» siempre va etiquetada con su rol.
+const dcTagJefatura = (text) => String(text || "").replace(/\bJefatura\b/g, ROLE_TAG_JEFATURA);
 // Emojis del servidor de Discord del Badulaque (se pegan tal cual).
 const DC_EMOJI_AGUILA = "<:aguila:1469892536234414202>";
 const DC_EMOJI_MANZANA = "<:manzana:1469893121981677588>";
@@ -1105,7 +1107,7 @@ function movDiscordText(up, desc, bajas, sun, cierre, star = null) {
     const head = `# ${DC_EMOJI_SALUDO} RECONOCIMIENTO SEMANAL ${DC_EMOJI_SALUDO}`;
     blocks.push(blocks.length ? `${head}\n\n${line}` : `${head}\n-# Semana del ${ascDM(sun)} al ${ascDM(ascDay(sun, 6))} · Badulaque Central\n\n${line}`);
   }
-  return `${blocks.join("\n\n")}\n\n-# — ${ROLE_TAG_JEFATURA} · Badulaque Central`;
+  return `${dcTagJefatura(blocks.join("\n\n"))}\n\n-# — ${ROLE_TAG_JEFATURA} · Badulaque Central`;
 }
 
 // Strikes de la semana: mensaje aparte para Discord (como en Aguila Motors).
@@ -1139,7 +1141,7 @@ function strikesDiscordText(items, sun, cierre) {
   const who = (it) => (it.discord && it.mention !== false ? `<@${it.discord}>` : `**${it.name}**`);
   const cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : "");
   const lines = items.map((it) => `${it.n >= STRIKE_MAX ? "🚫" : "⚠️"} ${who(it)}${it.rank ? ` (${rankRoleTag(it.rank)})` : ""} · ${strikeTag(it.n)} — ${cap(it.reason).replace(/\.$/, "")}.`);
-  return `# ⚠️ STRIKES DE LA SEMANA\n-# 📣 ${ROLE_TAG_TRABAJADORES} · Semana del ${ascDM(sun)} al ${ascDM(ascDay(sun, 6))} · Badulaque Central\n\n${lines.join("\n")}\n\n${cierre}\n-# — ${ROLE_TAG_JEFATURA} · Badulaque Central`;
+  return `# ⚠️ STRIKES DE LA SEMANA\n-# 📣 ${ROLE_TAG_TRABAJADORES} · Semana del ${ascDM(sun)} al ${ascDM(ascDay(sun, 6))} · Badulaque Central\n\n${dcTagJefatura(`${lines.join("\n")}\n\n${cierre}`)}\n-# — ${ROLE_TAG_JEFATURA} · Badulaque Central`;
 }
 
 // Ventana para despedir: tipo de baja + nota opcional. Devuelve el motivo

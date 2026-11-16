@@ -272,6 +272,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 46 · 16 de noviembre de 2026 · Jefatura siempre etiquetada
+- En los mensajes para Discord de movimientos y de strikes, cualquier mención a la Jefatura dentro del texto (frases de cierre, motivos) sale con la etiqueta de su rol, además de la firma.
+
 ### Versión 45 · 16 de noviembre de 2026 · Tabla de precios para Discord
 - Gestión de Productos tiene la pestaña **📣 Tabla de precios**: genera el mensaje para Discord con los productos y precios que tiene la página en ese momento, por categorías y con el Menú Badulaque primero.
 - Dos versiones: **para ciudadanos** (etiqueta su rol) y **para empleados** (etiqueta a Trabajadores; lleva el enlace de la página y separa Menú de crafteo, Almacén, Menú F6 y Exterior). Avisa si pasa de los 2.000 caracteres de Discord.
