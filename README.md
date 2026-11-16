@@ -272,8 +272,11 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 43 · 15 de noviembre de 2026 · Emojis de «No cobra» e IBAN pendiente
+- En el mensaje de pagas, «No cobra» e «IBAN pendiente» también usan emojis animados del servidor (antes ➖ y ⏳).
+
 ### Versión 42 · 15 de noviembre de 2026 · Emojis del servidor en las pagas
-- El mensaje de pagas usa los emojis animados del Discord del Badulaque en los títulos (Nóminas, Empleado de la Semana, Resumen) y en las líneas (cobra, warn, medalla del empleado de la semana, cuántos cobran y total). «IBAN pendiente» (⏳) y «No cobra» (➖) siguen con los de siempre.
+- El mensaje de pagas usa los emojis animados del Discord del Badulaque en los títulos (Nóminas, Empleado de la Semana, Resumen) y en las líneas (cobra, warn, medalla del empleado de la semana, cuántos cobran y total).
 
 ### Versión 41 · 14 de noviembre de 2026 · Inactividad solo de quien cobra
 - La inactividad (💤) ya no se aplica a quien tiene **«No cobra»**: no sale en el listado ni en la ficha de Gestión de Empleados, ni en el filtro «Sin facturar», ni en los avisos y el ranking del Panel del Jefe Tribal.

@@ -956,6 +956,8 @@ const PAY_EMOJI = {
   resumen: "<a:gifmeowthmoney:1571680270808252546>",
   cobran: "<a:sa:1571680284418515077>",
   total: "<a:almrichguy:1571680283248304284>",
+  noCobra: "<a:no:1571684875503665262>",
+  ibanPendiente: "<a:loadingpleasewai:1571684092758728805>",
 };
 // Felicitacion al empleado de la semana (se elige una al azar).
 const STAR_FRASES = [
@@ -4714,8 +4716,8 @@ function setupEmployeesModal(state, refreshPagos) {
       .slice()
       .sort((x, y) => (x.noPay ? 1 : 0) - (y.noPay ? 1 : 0) || (y.toPay || 0) - (x.toPay || 0) || x.name.localeCompare(y.name, "es"));
     const lines = sorted.map((r) => {
-      if (r.noPay) return `> ➖ ${who(r)}${rk(r)} — *${NO_PAY_TEXT}*`;
-      const icon = !r.iban ? "⏳" : r.strike ? PAY_EMOJI.warn : PAY_EMOJI.cobra;
+      if (r.noPay) return `> ${PAY_EMOJI.noCobra} ${who(r)}${rk(r)} — *${NO_PAY_TEXT}*`;
+      const icon = !r.iban ? PAY_EMOJI.ibanPendiente : r.strike ? PAY_EMOJI.warn : PAY_EMOJI.cobra;
       const iban = r.iban ? `\`${r.iban}\`` : "*IBAN pendiente*";
       const extra = `${isEmployeeOfWeek(r) ? ` ${PAY_EMOJI.medalla}` : ""}${r.strike ? ` · ${strikeTag(r.strikeN)}` : ""}`;
       return `> ${icon} ${who(r)}${rk(r)} — **${fmtMoney(r.toPay)}** · ${iban}${extra}`;
