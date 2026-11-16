@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Badulaque Central</title>
-  <link rel="stylesheet" href="styles.css?v=43" />
+  <link rel="stylesheet" href="styles.css?v=44" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -106,6 +106,7 @@
             <span class="muted product-count" id="product-count"></span>
             <button type="button" id="btn-add-product" class="ghost small">Gestión de Productos</button>
           </div>
+          <div id="product-cats" class="cat-bar" role="toolbar" aria-label="Categorías"></div>
           <div id="product-grid" class="product-grid"></div>
         </section>
 
@@ -494,7 +495,7 @@
         <section class="card jp-card"><div class="jp-card-h"><h3>👥 Plantilla esta semana</h3></div><div id="jp-plant"></div></section>
       </div>
     </section>
-    <footer class="app-version">Versión 43 · Emojis de «No cobra» e IBAN pendiente</footer>
+    <footer class="app-version">Versión 44 · Productos por categorías</footer>
   </main>
   </div>
 
@@ -516,6 +517,10 @@
           <input id="prod-new-name" class="text-input" type="text" placeholder="Nombre del producto" />
           <input id="prod-new-price" class="text-input" type="number" min="0" step="1" placeholder="Precio" />
           <input id="prod-new-supplies" class="text-input" type="number" min="0" step="1" placeholder="Suministros por unidad" />
+        </div>
+        <div class="form-row">
+          <label for="prod-new-cat">Categoría</label>
+          <select id="prod-new-cat" class="text-input"></select>
         </div>
 
         <div class="form-row">
@@ -546,6 +551,7 @@
               <tr>
                 <th></th>
                 <th>Nombre</th>
+                <th>Categoría</th>
                 <th class="num">Precio</th>
                 <th class="num">Suministros</th>
                 <th>Origen</th>
@@ -808,6 +814,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=43"></script>
+  <script src="app.js?v=44"></script>
 </body>
 </html>

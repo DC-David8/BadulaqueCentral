@@ -272,6 +272,13 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 44 · 16 de noviembre de 2026 · Productos por categorías
+- La Caja ordena los productos por **secciones** (🍔 Comida, 🥤 Bebidas, 🍺 Alcohol y quitaefectos, 📦 Objetos), cada una por orden alfabético y con el **Menu Badulaque** abriendo la Comida. Cada tecla lleva el color de su categoría.
+- **Botones de categoría** encima de los productos para ver solo una; al buscar se busca en todas.
+- **Buscador rápido**: en la Caja se escribe sin hacer clic en el buscador y **Enter** añade el primer resultado (lo que empieza por lo escrito va primero) y lo deja listo para el siguiente.
+- **Favoritos ⭐** por cajero (se guardan en su navegador): salen en una sección propia arriba del todo.
+- Gestión de Productos: cada producto tiene **Categoría** (los nuevos entran en Objetos si no se elige otra) y se puede cambiar la de los fijos.
+
 ### Versión 43 · 15 de noviembre de 2026 · Emojis de «No cobra» e IBAN pendiente
 - En el mensaje de pagas, «No cobra» e «IBAN pendiente» también usan emojis animados del servidor (antes ➖ y ⏳).
 

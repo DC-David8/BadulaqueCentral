@@ -132,6 +132,47 @@ const PRODUCTS = [
   { name: "Mochila de Outfits", price: 5000, image: "mochila_de_outfits.png" },
 ];
 
+// Categorias de la Caja. Dentro de cada una los productos van por orden
+// alfabetico; el Menu Badulaque (la insignia) siempre abre la de Comida.
+const PRODUCT_CATS = [
+  { id: "comida", label: "Comida", icon: "🍔" },
+  { id: "bebidas", label: "Bebidas", icon: "🥤" },
+  { id: "alcohol", label: "Alcohol y quitaefectos", short: "Alcohol", icon: "🍺" },
+  { id: "objetos", label: "Objetos", icon: "📦" },
+];
+const PRODUCT_CAT_DEFAULT = "objetos";
+const PRODUCT_FIRST = "menu badulaque";
+const PRODUCT_CAT = {
+  "menu badulaque": "comida", "alitas": "comida", "bocadillo de bacon": "comida", "bocadillo iberico": "comida",
+  "bocadillo de lomo": "comida", "bocadillo de tortilla": "comida", "bocadillo vegetal": "comida", "donas": "comida",
+  "pan": "comida", "pizza": "comida", "tacos de birria": "comida",
+  "agua": "bebidas", "energy": "bebidas", "refresco de cola": "bebidas", "refresco de limon": "bebidas",
+  // Con alcohol o efectos, y la Cimarrona (quita los efectos).
+  "cerveza": "alcohol", "cerveza mixta": "alcohol", "cortadito": "alcohol", "granizado": "alcohol", "michelada": "alcohol", "cimarrona": "alcohol",
+};
+const productCatOk = (c) => PRODUCT_CATS.some((x) => x.id === c);
+const productCatLabel = (c) => {
+  const x = PRODUCT_CATS.find((k) => k.id === c) || PRODUCT_CATS[PRODUCT_CATS.length - 1];
+  return `${x.icon} ${x.label}`;
+};
+// Favoritos de cada cajero: solo en su navegador.
+const PRODUCT_FAVS_STORAGE_KEY = "badu_product_favs_v1";
+function loadProductFavs() {
+  try {
+    const a = JSON.parse(localStorage.getItem(PRODUCT_FAVS_STORAGE_KEY) || "[]");
+    return new Set(Array.isArray(a) ? a.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+function saveProductFavs(set) {
+  try {
+    localStorage.setItem(PRODUCT_FAVS_STORAGE_KEY, JSON.stringify([...set]));
+  } catch {
+    // sin almacenamiento: los favoritos duran lo que la pagina
+  }
+}
+
 // ============================================================================
 // Concepto para el datafono (maximo 40 caracteres), igual que en Aguila Motors.
 // Si el concepto completo no cabe, se abrevia: "2xAlitas+3xCerv, Bacon+Lomo Boc".
@@ -2722,6 +2763,7 @@ function loadCustomProductsLocal() {
         price: Math.max(0, Math.floor(Number(p?.price) || 0)),
         supplies: Math.max(0, Math.floor(Number(p?.supplies) || 0)),
         image: String(p?.image || ""),
+        cat: productCatOk(p?.cat) ? p.cat : PRODUCT_CAT_DEFAULT,
       }))
       .filter((p) => p.name);
   } catch {
@@ -2759,6 +2801,7 @@ function addCustomProduct(payload) {
     price: Math.max(0, Math.floor(Number(payload.price) || 0)),
     supplies: Math.max(0, Math.floor(Number(payload.supplies) || 0)),
     image: String(payload.image || ""),
+    cat: productCatOk(payload.cat) ? payload.cat : PRODUCT_CAT_DEFAULT,
   });
   saveCustomProductsLocal(list);
 }
@@ -2775,6 +2818,7 @@ function updateCustomProduct(id, payload) {
     price: Math.max(0, Math.floor(Number(payload.price ?? cur.price) || 0)),
     supplies: Math.max(0, Math.floor(Number(payload.supplies ?? cur.supplies) || 0)),
     image: payload.image ? String(payload.image) : cur.image,
+    cat: productCatOk(payload.cat) ? payload.cat : cur.cat,
   };
   saveCustomProductsLocal(list);
 }
@@ -2794,6 +2838,7 @@ function setFixedProductOverride(name, payload) {
     price: Math.max(0, Math.floor(Number(payload.price ?? cur.price) || 0)),
     supplies: Math.max(0, Math.floor(Number(payload.supplies ?? cur.supplies) || 0)),
     image: payload.image ? String(payload.image) : cur.image,
+    cat: productCatOk(payload.cat) ? payload.cat : cur.cat,
   };
   saveProductOverridesLocal(map);
 }
@@ -2815,6 +2860,7 @@ function fixedProductView(p, overrides) {
     price: ov.price ?? p.price,
     supplies: ov.supplies ?? baseSupplies,
     image: ov.image || p.image || "",
+    cat: productCatOk(ov.cat) ? ov.cat : PRODUCT_CAT[key] || PRODUCT_CAT_DEFAULT,
     hidden: !!ov.hidden,
     fixed: true,
   };
@@ -2924,6 +2970,9 @@ function setupProductsAdminModal(onProductsChanged) {
   const cancelEditBtn = byId("prod-new-cancel-edit");
   const searchEl = byId("prod-search");
   const bodyEl = byId("prod-admin-body");
+  const catEl = byId("prod-new-cat");
+  catEl.textContent = "";
+  for (const c of PRODUCT_CATS) catEl.appendChild(new Option(`${c.icon} ${c.label}`, c.id));
 
   let editing = null; // { fixed: bool, name?: string, id?: string }
   let pendingImage = "";
@@ -2942,6 +2991,7 @@ function setupProductsAdminModal(onProductsChanged) {
     nameEl.disabled = false;
     priceEl.value = "";
     suppliesEl.value = "";
+    catEl.value = PRODUCT_CAT_DEFAULT;
     imageEl.value = "";
     previewBox.style.display = "none";
     previewImg.removeAttribute("src");
@@ -2964,6 +3014,7 @@ function setupProductsAdminModal(onProductsChanged) {
     nameEl.disabled = row.fixed; // el nombre de un producto fijo no se cambia
     priceEl.value = row.price;
     suppliesEl.value = row.supplies || 0;
+    catEl.value = row.cat || PRODUCT_CAT_DEFAULT;
     previewImg.src = getProductIcon(row);
     previewBox.style.display = "block";
     hintEl.textContent = "Si no eliges una imagen nueva, se mantiene la actual.";
@@ -2985,6 +3036,7 @@ function setupProductsAdminModal(onProductsChanged) {
       tr.innerHTML = `
         <td><img class="prod-thumb" alt="" src="${escapeHtml(getProductIcon(row))}" /></td>
         <td>${escapeHtml(row.name)}</td>
+        <td>${escapeHtml(productCatLabel(row.cat))}</td>
         <td class="num">${fmtMoney(row.price)}</td>
         <td class="num">${row.supplies || 0}</td>
         <td>${origin}</td>
@@ -3010,7 +3062,7 @@ function setupProductsAdminModal(onProductsChanged) {
       bodyEl.appendChild(tr);
     }
     if (!rows.length) {
-      bodyEl.innerHTML = '<tr><td colspan="6" class="muted">Sin resultados</td></tr>';
+      bodyEl.innerHTML = '<tr><td colspan="7" class="muted">Sin resultados</td></tr>';
     }
   }
 
@@ -3055,12 +3107,12 @@ function setupProductsAdminModal(onProductsChanged) {
     try {
       if (!editing) {
         if (isDuplicateName(name)) { errorEl.textContent = "Ya existe un producto con ese nombre."; return; }
-        addCustomProduct({ name, price, supplies, image: pendingImage });
+        addCustomProduct({ name, price, supplies, image: pendingImage, cat: catEl.value });
       } else if (editing.fixed) {
-        setFixedProductOverride(editing.name, { price, supplies, image: pendingImage });
+        setFixedProductOverride(editing.name, { price, supplies, image: pendingImage, cat: catEl.value });
       } else {
         if (isDuplicateName(name, normalizeKeySimple(editing.name))) { errorEl.textContent = "Ya existe un producto con ese nombre."; return; }
-        updateCustomProduct(editing.id, { name, price, supplies, image: pendingImage });
+        updateCustomProduct(editing.id, { name, price, supplies, image: pendingImage, cat: catEl.value });
       }
     } catch (err) {
       errorEl.textContent = String(err?.message || err);
@@ -3373,14 +3425,28 @@ function setupCaja() {
     document.querySelectorAll(".lcd .lcd-total").forEach((el) => (el.dataset.size = size));
   }
 
-  // Buscador: oculta las teclas que no coinciden con lo escrito.
+  // Buscador y categorias: oculta las teclas que no tocan. Al escribir se busca
+  // en todos los productos, sea cual sea la categoria elegida.
+  const catBar = byId("product-cats");
+  let catSel = "all";
+  let favs = loadProductFavs();
   function applySearch() {
     const q = normalizeKeySimple(searchInput?.value || "");
     let shown = 0;
-    productGrid.querySelectorAll(".product-btn").forEach((btn) => {
-      const ok = !q || normalizeKeySimple(btn.dataset.name || "").includes(q);
-      btn.hidden = !ok;
-      if (ok) shown++;
+    productGrid.querySelectorAll(".cat-sec").forEach((sec) => {
+      let n = 0;
+      // Buscando, cada producto sale una sola vez (no repetido en Favoritos).
+      const secOk = q ? sec.dataset.cat !== "fav" : catSel === "all" ? true : sec.dataset.cat === catSel;
+      // En «Todo», un favorito sale solo arriba, en Favoritos.
+      const skipFavs = !q && catSel === "all" && sec.dataset.cat !== "fav";
+      sec.querySelectorAll(".product-btn").forEach((btn) => {
+        const key = normalizeKeySimple(btn.dataset.name || "");
+        const ok = secOk && (!q || key.includes(q)) && !(skipFavs && favs.has(key));
+        btn.hidden = !ok;
+        if (ok) n++;
+      });
+      sec.hidden = !n;
+      shown += n;
     });
     let empty = productGrid.querySelector(".no-results");
     if (!shown) {
@@ -3389,12 +3455,34 @@ function setupCaja() {
         empty.className = "no-results";
         productGrid.appendChild(empty);
       }
-      empty.textContent = `Ningún producto coincide con "${searchInput.value.trim()}".`;
+      empty.textContent = q ? `Ningún producto coincide con "${searchInput.value.trim()}".` : "No hay productos en esta categoría.";
     } else if (empty) {
       empty.remove();
     }
-    const all = productGrid.querySelectorAll(".product-btn").length;
-    if (productCount) productCount.textContent = q ? `${shown} de ${all}` : `${all} productos`;
+    const all = new Set([...productGrid.querySelectorAll(".product-btn")].map((b) => b.dataset.name)).size;
+    if (productCount) productCount.textContent = q || catSel !== "all" ? `${shown} de ${all}` : `${all} productos`;
+    catBar?.querySelectorAll(".cat-chip").forEach((c) => c.classList.toggle("is-on", !q && c.dataset.cat === catSel));
+  }
+  function renderCatBar(products) {
+    if (!catBar) return;
+    catBar.textContent = "";
+    const chip = (id, text, title) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = `cat-chip cat-${id}`;
+      b.dataset.cat = id;
+      b.textContent = text;
+      if (title) b.title = title;
+      b.addEventListener("click", () => {
+        catSel = id;
+        if (searchInput) searchInput.value = "";
+        applySearch();
+      });
+      catBar.appendChild(b);
+    };
+    chip("all", "Todo");
+    if (products.some((p) => favs.has(normalizeKeySimple(p.name)))) chip("fav", "⭐ Favoritos");
+    for (const c of PRODUCT_CATS) if (products.some((p) => p.cat === c.id)) chip(c.id, `${c.icon} ${c.short || c.label}`, c.label);
   }
 
   // Cuantas unidades de cada producto hay en el ticket (se ve en el movil).
@@ -3408,26 +3496,65 @@ function setupCaja() {
     });
   }
 
+  function productKey(product, fav) {
+    const key = normalizeKeySimple(product.name);
+    const button = document.createElement("button");
+    button.className = `product-btn cat-${product.cat}`;
+    button.type = "button";
+    button.dataset.name = product.name;
+    button.dataset.cat = product.cat;
+    button.innerHTML = `
+      <img src="${escapeHtml(getProductIcon(product))}" alt="${escapeHtml(product.name)}" />
+      <strong>${escapeHtml(product.name)}</strong>
+      <small>${fmtMoney(product.price)}</small>
+      <span class="qty-badge"></span>
+      <span class="fav-star${fav ? " is-on" : ""}" role="button" aria-label="${fav ? "Quitar de favoritos" : "Marcar como favorito"}" title="${fav ? "Quitar de favoritos" : "Marcar como favorito"}">${fav ? "★" : "☆"}</span>
+    `;
+    button.addEventListener("click", (ev) => {
+      if (ev.target.closest(".fav-star")) {
+        if (favs.has(key)) favs.delete(key);
+        else favs.add(key);
+        saveProductFavs(favs);
+        if (catSel === "fav" && !favs.size) catSel = "all";
+        renderProductGrid();
+        showToast(favs.has(key) ? "⭐ Favorito:" : "☆ Ya no es favorito:", product.name);
+        return;
+      }
+      addItemDelta(product.name, product.price, +1);
+    });
+    button.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      addItemDelta(product.name, product.price, -1);
+    });
+    return button;
+  }
+  // Teclas por secciones: Favoritos (si hay) y luego cada categoria, por orden
+  // alfabetico y con el Menu Badulaque abriendo la Comida.
   function renderProductGrid() {
     productGrid.innerHTML = "";
-    for (const product of getAllProducts()) {
-      const button = document.createElement("button");
-      button.className = "product-btn";
-      button.type = "button";
-      button.dataset.name = product.name;
-      button.innerHTML = `
-        <img src="${escapeHtml(getProductIcon(product))}" alt="${escapeHtml(product.name)}" />
-        <strong>${escapeHtml(product.name)}</strong>
-        <small>${fmtMoney(product.price)}</small>
-        <span class="qty-badge"></span>
-      `;
-      button.addEventListener("click", () => addItemDelta(product.name, product.price, +1));
-      button.addEventListener("contextmenu", (ev) => {
-        ev.preventDefault();
-        addItemDelta(product.name, product.price, -1);
-      });
-      productGrid.appendChild(button);
+    const products = getAllProducts();
+    const byName = (a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+    const first = (p) => (normalizeKeySimple(p.name) === PRODUCT_FIRST ? 0 : 1);
+    const section = (id, title, list) => {
+      if (!list.length) return;
+      const sec = document.createElement("section");
+      sec.className = `cat-sec cat-${id}`;
+      sec.dataset.cat = id;
+      const h = document.createElement("h3");
+      h.className = "cat-head";
+      h.textContent = title;
+      const grid = document.createElement("div");
+      grid.className = "cat-grid";
+      for (const p of list) grid.appendChild(productKey(p, favs.has(normalizeKeySimple(p.name))));
+      sec.append(h, grid);
+      productGrid.appendChild(sec);
+    };
+    section("fav", "⭐ Favoritos", products.filter((p) => favs.has(normalizeKeySimple(p.name))).sort(byName));
+    for (const c of PRODUCT_CATS) {
+      section(c.id, `${c.icon} ${c.label}`, products.filter((p) => p.cat === c.id).sort((a, b) => first(a) - first(b) || byName(a, b)));
     }
+    if (catSel !== "all" && !productGrid.querySelector(`.cat-sec[data-cat="${catSel}"]`)) catSel = "all";
+    renderCatBar(products);
     renderQtyBadges();
     applySearch();
   }
@@ -3438,6 +3565,30 @@ function setupCaja() {
       searchInput.value = "";
       applySearch();
     }
+    // Enter añade el primer producto que coincide y deja el buscador listo para el siguiente.
+    if (ev.key === "Enter" && searchInput.value.trim()) {
+      ev.preventDefault();
+      const q = normalizeKeySimple(searchInput.value);
+      const visible = [...productGrid.querySelectorAll(".product-btn")].filter((b) => !b.hidden);
+      // Primero el que empieza por lo escrito ("cer" → Cerveza).
+      const firstBtn = visible.find((b) => normalizeKeySimple(b.dataset.name).startsWith(q)) || visible[0];
+      if (!firstBtn) return;
+      const p = getAllProducts().find((x) => x.name === firstBtn.dataset.name);
+      if (!p) return;
+      addItemDelta(p.name, p.price, +1);
+      searchInput.value = "";
+      applySearch();
+    }
+  });
+
+  // En la Caja se puede escribir sin tocar el buscador: la primera letra lo enfoca.
+  document.addEventListener("keydown", (ev) => {
+    if (!searchInput || ev.ctrlKey || ev.metaKey || ev.altKey || ev.key.length !== 1 || ev.key === " ") return;
+    if (!byId("tab-caja")?.classList.contains("is-active") || document.querySelector("dialog[open]")) return;
+    const t = ev.target;
+    if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (searchInput.offsetParent === null) return;
+    searchInput.focus();
   });
 
   renderProductGrid();
