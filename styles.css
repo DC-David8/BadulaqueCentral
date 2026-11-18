@@ -1410,3 +1410,12 @@ button.lic-chip { cursor: pointer; }
 .jp-rk-sub { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
 .eh-min span { right: 2px; left: auto; top: -15px; }
 .eh-col.ns .eh-bar i.f { background: #6b7480; }
+/* v49 · Empleados como sección: a todo el ancho y sin barras de desplazamiento internas */
+#employees-admin-modal.emp-section { width: 100%; max-width: none; }
+.emp-section .emp-card { min-height: 0; max-height: none; overflow: visible; border-radius: 0; }
+.emp-section .emp-list { max-height: none; overflow: visible; }
+.emp-section .emp-ficha { max-height: none; overflow: visible; }
+/* Ficha: Datos · Licencias · Rango en una fila; historia y strikes a todo el ancho */
+.emp-ficha:has(.emp-lic) .emp-rango { grid-column: auto; }
+.emp-section .emp-strk { grid-column: 1 / -1; }
+@media (max-width: 760px) { .emp-section .emp-strk { grid-column: auto; } }
