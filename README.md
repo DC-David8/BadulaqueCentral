@@ -75,22 +75,33 @@ El log de Rasca y Gana está en el Discord de la ciudad, donde no podemos meter 
 
 ## Gestión de empleados (👥 Empleados)
 
-Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado · Strikes · Rangos · Despedidos**.
+Sección propia del menú (**👥 Empleados**, solo Gerentes y Jefe Tribal; desde la v48 ya no es una ventana encima de Pagos), por pestañas igual que en Aguila Motors: **Listado · Nuevo empleado · Strikes · Rangos · Despedidos · Para Discord**. Se recarga cada vez que se entra.
 
 - **Listado:** recuadros arriba que también filtran (En plantilla, Con strikes, Para despido 3/3, Sin IBAN, Sin Discord, **Sin fecha de ingreso**, **Sin facturar**), buscador, orden Por rango / A–Z / Más strikes / **Antigüedad** y filtro **📅 Fechas** (por ingreso o contratación, desde / hasta). Cada fila: avatar del rango, nombre, rango y %, «📅 Ingreso … · Contratado …», strikes, aviso 💤 de inactividad y ✔/⚠ de Discord e IBAN (o «No cobra»). Al tocar una fila se abre su ficha.
+- **💵 Semana en vivo** (v48): sin pasar por Pagos, la barra «En vivo» dice lo vendido esta semana (facturas del Discord, sin rascas), cuántos van bajo el mínimo y cuándo se actualizó (sola cada 2 minutos, o con ↻). Cada fila lleva su cifra (rojo bajo el mínimo, verde con él), «faltan $ X al mínimo» y una barra con la marca del mínimo. Orden «💵 Esta semana». Si Pagos tiene cargada esa misma semana, manda Pagos (con rascas).
+- **Filtro «No cobran»**, etiqueta **🏆 Empleado de la Semana** (el del bono en la última semana cerrada) e iconos de sus **licencias** (🚗 🏍️ 🚚 ✈️).
 - **Fechas de cada empleado** (SQL `9_fechas_empleados.sql`): **Ingreso** al Badulaque (su primer día; no cambia aunque le despidan y le readmitan) y **Contratación** (la del contrato actual; al readmitir se pone la del día). Se ponen al dar de alta (por defecto, hoy) y se cambian en «Editar datos». La de contratación no puede ser anterior a la de ingreso. En la ficha sale la antigüedad («8 meses»).
 - **Alta en un solo guardado:** el ID de Discord, el IBAN y las fechas que se ponen al dar de alta se guardan de una vez.
 - **💤 Aviso de inactividad:** con las facturas que el bot copia del Discord del Badulaque (últimos 30 días) se sabe la última factura de cada empleado. En el listado sale «💤 N d» en amarillo (aviso), naranja (alerta) o rojo (grave); en la ficha, la fecha de su última factura. A los recién entrados se les cuenta desde su ingreso. Los días de cada color (3, 5 y 7) los cambia el Jefe Tribal en Rangos (`app_settings` «inact_dias»). El Jefe Tribal no lleva aviso.
-- **Ficha:** «← Listado» y anterior / siguiente; cabecera con avatar grande, rango, strikes y «en el negocio desde» (fecha de alta o, si falta, su primera semana cerrada); **Datos** con «✏️ Editar datos» (nombre, apellido, rango, Discord, IBAN, No cobra) y **Despedir**; **Rango** con la escalera (Reponedor → Cajero → Cajero Principal → Supervisor → Gerente), lo vendido esta semana frente al mínimo y **Subir a… / Bajar a…**; gráfica de las últimas 6 semanas cerradas (más la actual si Pagos la tiene cargada) con la línea del mínimo, media y mejor semana; **Strikes** semana a semana con ＋1, −1, Quitar todos y clic en una semana para ponerlo o quitarlo; **Historial**.
+- **Ficha:** «← Listado» y anterior / siguiente; cabecera con avatar grande, rango, strikes y «en el negocio desde» (fecha de alta o, si falta, su primera semana cerrada); **Datos** con «✏️ Editar datos» (nombre, apellido, rango, Discord, IBAN, No cobra) y **Despedir**; **🪪 Licencias** (Coche, Moto, Camión, Avión: un toque y se guarda; e imagen de la licencia: pegar con Ctrl+V, arrastrar o subir, verla en grande; solo el Jefe Tribal las cambia); **Rango** con la escalera (Reponedor → Cajero → Cajero Principal → Supervisor → Gerente) **como botones** (un clic sube o baja directamente a ese rango, con aviso si son varios de golpe) y lo vendido esta semana frente al mínimo; **📈 Su historia en el Badulaque**: una barra por semana con facturas (naranja) y rascas (azul), las semanas bajo el mínimo en rojo, la semana en curso punteada y encima ⬆️ ascensos, ⬇️ descensos, ⚠️ strikes y 🏆; 8 / 12 semanas / Todo; al tocar una barra, el desglose; resumen con media, mejor semana, rascas vendidos y tiempo en el Badulaque; **Strikes** semana a semana con ＋1, −1, Quitar todos y clic en una semana para ponerlo o quitarlo; **Historial**.
 - **Strikes:** solo los que tienen, separados en «Para despido» y «Con strikes», con cuadritos de las últimas semanas (rojo = strike, punteado = quitado), motivos, ＋1 / −1 / Despedir y el formulario «Poner strike» con motivo. Los de la semana en curso se ven en Pagos (allí el Jefe Tribal también los quita con ✕, los vuelve a poner con ↺ o pone uno a mano).
 - **Rangos:** tabla con la comisión y quién está en cada rango, y los días del aviso de inactividad.
 - **📣 Para Discord** (Gerentes y Jefe Tribal, con la nube): el mensaje **«🍎 MOVIMIENTOS DE PERSONAL DE LA SEMANA»** con los ascensos, descensos y bajas de una semana (por defecto la última cerrada; ◀ ▶ para cambiar). Sale del historial: los cambios de rango dados desde el sábado de cierre hasta el sábado siguiente y los despidos de esos días. Cada ascenso lleva una felicitación al azar distinta; cada descenso, su motivo (no llegó al mínimo, baja actividad o sanción); cada baja, una frase según el tipo. Menciona a cada persona y los roles de Discord del rango anterior y del nuevo, y cierra con una frase y la etiqueta de **Jefatura**. Casillas para quitar a alguien, «Mencionar» para quien ya no está en el servidor, 🎲 Otras frases y un solo botón de copiar. Si alguien cambia dos veces, sale una línea de su primer rango al último. Tras subir, bajar o despedir a alguien aparece un botón que lleva al mensaje.
-- **Despedidos:** el registro con Readmitir (y Borrar registro solo para el Jefe Tribal).
+- **Despedidos:** el registro con Readmitir (y Borrar registro solo para el Jefe Tribal). Desde la v48 «Readmitir» abre una ventana para cambiar nombre, apellido, IBAN y rango; si la baja fue un **CK** sale marcada «Vuelve con un personaje nuevo» (datos nuevos y su antigüedad empieza ese día; el historial lo apunta).
 - Un strike quitado no suma ni corta la racha. Los ajustes se guardan en línea (`app_settings`, clave `strike_adj`) y cuentan en Pagos, Totales empleados y Copiar para Discord.
 - Todo cambio (alta, rango, nombre, Discord, IBAN, No cobra, strikes, despido, readmisión) se apunta solo en el historial (tabla `emp_historial`, SQL `supabase/7_historial_empleados.sql`). Si la tabla aún no existe, la ficha lo avisa y la página sigue funcionando.
 - **Permisos con la nube:** editar datos, subir / bajar, despedir y todo lo de strikes es **solo del Jefe Tribal**. Los Gerentes lo ven todo en modo lectura, dan de alta (rangos bajos) y readmiten rangos bajos. **Sin la nube** (programa de escritorio) se cambia todo con la contraseña de empleados; el historial, la gráfica y los strikes por semana necesitan la nube.
 - **Avatares por rango** (también en el ranking de Pagos): Reponedor = etiqueta ★ · Cajero = caja registradora ★★ · Cajero Principal = cesta de la compra ★★★ · Supervisor = portapapeles ★★★★ · Gerente = maletín ★★★★★ · Jefe Tribal = logo del Badulaque ★★★★★. Sin rango: iniciales.
 - En el móvil: la lista arriba y la ficha a pantalla completa.
+
+## Bot del Badulaque: log de empleados, publicar y roles (v48)
+
+Con el SQL `supabase/10_licencias_y_bot.sql` y la función `log-empleados` (`supabase/11_funcion_log-empleados.ts`), el mismo bot que copia las facturas:
+
+- **📋 Log de Discord** (Empleados): un mensaje por empleado en el canal del log (cuadrado del color del rango, rango, IBAN, licencias, alta y estado). Al dar de alta, editar, cambiar de rango, despedir o readmitir, la página avisa al bot y él edita ese mismo mensaje. El botón publica o corrige todos, borra los viejos escritos a mano con la plantilla y ofrece «↕ Rehacer en orden». Nunca menciona a nadie.
+- **📣 Publicar en Discord**: el mensaje de **pagas** (Pagos), el de **movimientos de personal** y el de **strikes** (Empleados → Para Discord) en su canal. Si ya estaba publicado, corrige el mismo mensaje. Si no cabe en 2.000 caracteres, lo parte. Se siguen pudiendo copiar.
+- **Roles automáticos**: al cambiar el rango, el bot quita el rol del rango viejo y pone el nuevo (y Trabajadores); al despedir, quita los de rango, Trabajadores, warns y Empleado de la Semana; al readmitir, los devuelve. Al publicar los movimientos pasa el rol de Empleado de la Semana al ganador de la última semana cerrada; al publicar los strikes pone o quita los de 1.º / 2.º / 3.º warn según la racha. «🔎 Revisar roles» enseña antes qué cambiaría y «🔐 Roles» (Empleados) revisa a toda la plantilla. Nunca toca Jefatura ni al Jefe Tribal, ni a una cuenta de Discord con varios personajes activos.
+- **Montarlo:** 1) SQL 10 en Supabase → SQL Editor. 2) Supabase → Edge Functions → Deploy a new function → Via Editor, nombre `log-empleados`, pegar el archivo 11 con los IDs del servidor y de los canales puestos arriba del todo, y Deploy. 3) En Discord, el rol del bot por encima de los rangos, con «Gestionar roles», y en los canales «Ver canal», «Enviar mensajes», «Leer el historial» y «Gestionar mensajes» (este último en el del log). El token del bot ya está en los secretos de Supabase: no va en el código ni en la página.
 
 ## Strikes, bono y cierre de semana
 
@@ -109,6 +120,7 @@ Ventana por pestañas, igual que en Aguila Motors: **Listado · Nuevo empleado �
 - Semana de domingo a sábado con ◀ ▶ y **🔄 Actualizar** (pide al bot lo último del canal).
 - Tarjetas: 💰 Vendido, 👥 Nóminas (con el bono), 🍎 Queda para el Badulaque y ⭐ Empleado de la semana, comparadas con la semana anterior.
 - Gráfica de las últimas 8 semanas, avisos (3/3 strikes, 2/3 con lo que falta, 💤 inactividad, sin IBAN, sin Discord), ranking de ventas, mejores clientes y movimientos de plantilla.
+- Desde la v48 lo vendido se separa en **facturas** y **rascas**: en la gráfica (barra naranja y azul, con los rascas de cada semana bajo la fecha), en el ranking y en la cifra de la semana. Pagos guarda al cerrar las facturas y los rascas de cada uno; en semanas cerradas antes se separan con las facturas del Discord de esa semana («≈»).
 - Una semana sin cerrar en Pagos se estima con las facturas del Discord, **sin rascas** (sale marcada con *). La semana en curso no se compara con la anterior hasta cerrarla.
 
 ## Despidos
@@ -271,6 +283,16 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 ## Bitácora
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
+
+### Versión 48 · 18 de noviembre de 2026 · Empleados y Panel como Aguila Motors
+- **Gestión de empleados es una sección** con su botón 👥 Empleados en el menú (y en la barra de abajo del móvil), solo Gerentes y Jefe Tribal.
+- **Semana en vivo** en el listado y la ficha, filtro **No cobran**, etiqueta **🏆 Empleado de la Semana** e iconos de licencias en cada fila.
+- **Ficha:** rangos como botones, **📈 Su historia en el Badulaque** (facturas y rascas por semana, con ascensos, descensos, strikes y 🏆) y **🪪 Licencias** con su imagen.
+- **Readmitir con personaje nuevo** (CK): nombre, apellido, IBAN y rango nuevos.
+- **Panel del Jefe Tribal**: facturas y rascas por separado en la gráfica, el ranking y lo vendido.
+- **Para Discord:** los movimientos de cada semana van del sábado de su cierre a mediodía (hora de España) al sábado siguiente a mediodía.
+- **Bot:** log de empleados en Discord, publicar pagas, movimientos y strikes, y roles automáticos (SQL 10 y función `log-empleados`).
+- Pagos guarda al cerrar la semana las facturas y los rascas de cada uno.
 
 ### Versión 47 · 16 de noviembre de 2026 · Cimarrona: quita efectos
 - La tecla de la **Cimarrona** en la Caja lleva el aviso «Quita efectos». Buscar «quita» o «efectos» también la encuentra. En el ticket y en el concepto sigue saliendo solo el nombre.

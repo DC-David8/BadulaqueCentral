@@ -394,7 +394,7 @@ async function listEmployees() {
   if (cloudOn()) {
     await AUTH_READY;
     if (!isJefe()) return [];
-    return (await empCloudLoad()).filter((e) => !e.firedAt).map((e) => ({ id: e.id, name: e.name, surname: e.surname, rank: e.rank }));
+    return (await empCloudLoad()).filter((e) => !e.firedAt).map((e) => ({ id: e.id, name: e.name, surname: e.surname, rank: e.rank, licencia: e.licencia || "" }));
   }
   const api = await waitPyApi();
   if (api && typeof api.emp_list === "function") {
@@ -523,10 +523,14 @@ async function fireEmployee(e, reason, password) {
   return true;
 }
 
-async function readmitEmployee(rec, password) {
+async function readmitEmployee(rec, password, ch = null) {
   if (cloudOn()) {
-    // Nuevo contrato (la fecha de ingreso no cambia).
-    await empCloudPatch(rec.id, { despedido_at: null, despedido_por: null, despedido_motivo: null, ...(EMP_CLOUD.hasDates ? { contratado_at: empToday() } : {}) });
+    // Nuevo contrato (la fecha de ingreso solo cambia con un personaje nuevo).
+    // v48: con `ch` vuelve con otro rango, otro IBAN o un personaje nuevo (CK).
+    const patch = { despedido_at: null, despedido_por: null, despedido_motivo: null, ...(EMP_CLOUD.hasDates ? { contratado_at: empToday(), ...(ch?.newChar ? { alta_at: empToday() } : {}) } : {}) };
+    if (ch) Object.assign(patch, { name: ch.name, surname: ch.surname, iban: ch.iban ?? rec.iban ?? "", rank: ch.rank || "" });
+    await empCloudPatch(rec.id, patch);
+    if (ch?.newChar) empLog(rec.id, "alta", `🕊️ Personaje nuevo: ${ch.name} ${ch.surname} (antes ${fullName(rec)})`);
     return true;
   }
   await addEmployee({ name: rec.name, surname: rec.surname, rank: rec.rank || "" }, password);
@@ -988,12 +992,15 @@ const ascDefaultWeek = () => {
   }
   return sun;
 };
-// Cambios de rango de la semana que empieza el domingo `sun`: los dados desde
-// su sabado de cierre hasta el sabado siguiente. Si alguien cambia dos veces
-// se junta en uno (de su primer rango al ultimo).
+// Movimientos que se anuncian con la semana `sun`: los hechos desde el sabado
+// de su cierre a mediodia (hora de Espana) hasta el sabado siguiente a
+// mediodia (como Aguila v134). Asi no se pisan dos semanas.
+const ascIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const ascWindow = (sun) => [new Date(dlogMadridMidnight(ascIso(sun), 6) + 12 * 3600000), new Date(dlogMadridMidnight(ascIso(sun), 13) + 12 * 3600000)];
+// Cambios de rango de esa ventana. Si alguien cambia dos veces se junta en
+// uno (de su primer rango al ultimo).
 async function rankMovesWeek(sun) {
-  const a = ascDay(sun, 6).toISOString();
-  const b = ascDay(sun, 14).toISOString();
+  const [a, b] = ascWindow(sun).map((d) => d.toISOString());
   const rows = await cloud.req(`/rest/v1/emp_historial?select=employee_id,at,texto&tipo=eq.rango&at=gte.${encodeURIComponent(a)}&at=lt.${encodeURIComponent(b)}&order=at.asc`);
   const by = new Map();
   for (const r of rows || []) {
@@ -1018,7 +1025,7 @@ async function ascensosSemana(sun, people) {
 }
 // Descensos y bajas (despidos) de la semana `sun`.
 async function descensosSemana(sun, people) {
-  const a = ascDay(sun, 6), b = ascDay(sun, 14);
+  const [a, b] = ascWindow(sun);
   const inWeek = (iso) => { const t = new Date(iso); return t >= a && t < b; };
   const bajas = people
     .filter((f) => f.firedAt && inWeek(f.firedAt))
@@ -1416,6 +1423,8 @@ async function empHistory(empId) {
 
 // Lo facturado esta semana por persona (lo deja Pagos al procesar).
 let PAGOS_WEEK_GROSS = null;
+let PAGOS_WEEK_RAS = null;
+let PAGOS_WEEK_RAS_KEY = "";
 
 // ---------------------------------------------------------------------------
 // Avatar por rango: icono del rango sobre un circulo de su color y estrellas
@@ -1780,6 +1789,7 @@ const empFromRow = (r) => ({
   firedReason: String(r.despedido_motivo || ""),
   altaAt: localDay(r.alta_at),
   contratadoAt: localDay(r.contratado_at),
+  licencia: String(r.licencia ?? ""),
 });
 
 // Apunta en el historial lo que cambia entre dos versiones del mismo empleado.
@@ -1805,6 +1815,7 @@ function empLogDiff(before, next) {
   if ((before.iban || "") !== (next.iban || "")) empLog(id, "datos", `🏦 IBAN: ${next.iban || "quitado"}`);
   if ((before.altaAt || "") !== (next.altaAt || "")) empLog(id, "datos", `📅 Fecha de ingreso al Badulaque: ${empDate(next.altaAt) || "sin fecha"}`);
   if ((before.contratadoAt || "") !== (next.contratadoAt || "")) empLog(id, "datos", `📝 Fecha de contratación: ${empDate(next.contratadoAt) || "sin fecha"}`);
+  if ((before.licencia || "") !== (next.licencia || "")) empLog(id, "datos", `🪪 Licencias: ${next.licencia ? String(next.licencia).split(",").join(", ") : "ninguna"}`);
 }
 
 async function empCloudLoad() {
@@ -1812,6 +1823,8 @@ async function empCloudLoad() {
   EMP_CLOUD.list = (rows || []).map(empFromRow).filter((e) => e.name && e.surname);
   // Con el SQL 9 la tabla tiene la fecha de contratacion: se guardan las dos fechas.
   EMP_CLOUD.hasDates = (rows || []).some((r) => "contratado_at" in r);
+  // Con el SQL 10 hay licencias y log de Discord (y el bot puede publicar).
+  EMP_CLOUD.hasLic = (rows || []).some((r) => "licencia" in r);
   EMP_CLOUD.ok = true;
   return EMP_CLOUD.list;
 }
@@ -1837,6 +1850,7 @@ async function empCloudInsert(row) {
   const e = empFromRow(out[0]);
   EMP_CLOUD.list.push(e);
   empLogDiff(null, e);
+  if (EMP_CLOUD.hasLic) logEmpPush(e.id);
   return e;
 }
 
@@ -1853,6 +1867,8 @@ async function empCloudPatch(id, patch, beforeSnap = null) {
   const before = beforeSnap || (idx >= 0 ? EMP_CLOUD.list[idx] : null);
   if (idx >= 0) EMP_CLOUD.list[idx] = fresh;
   if (before) empLogDiff(before, fresh);
+  // El bot pone al dia su mensaje del log y sus roles (no hace falta esperar).
+  if (EMP_CLOUD.hasLic) logEmpPush(fresh.id);
   return fresh;
 }
 
@@ -2415,7 +2431,13 @@ async function jpWeek(sun) {
   const emps = EMP_CLOUD.list.filter((e) => !e.firedAt);
   let people;
   if (closed) {
-    people = closed.datos.rows.map((r) => ({ id: r.id, name: r.name, rank: canonRank(r.rank), gross: Number(r.gross) || 0, payout: Number(r.payout) || 0, bonus: Number(r.bonus) || 0, noPay: !!r.noPay }));
+    people = closed.datos.rows.map((r) => {
+      const gross = Number(r.gross) || 0;
+      // v48: facturas y rascas de cada uno. En semanas cerradas antes, se
+      // separan con las facturas del canal de esa semana (el resto, rascas).
+      const fact = r.fact != null ? Number(r.fact) || 0 : null;
+      return { id: r.id, name: r.name, rank: canonRank(r.rank), gross, fact, ras: r.ras != null ? Number(r.ras) || 0 : null, rasQty: r.rasQty != null ? Number(r.rasQty) || 0 : null, payout: Number(r.payout) || 0, bonus: Number(r.bonus) || 0, noPay: !!r.noPay };
+    });
   } else {
     const byKey = new Map(emps.map((e) => [normalizeKeySimple(fullName(e)), e]));
     const map = new Map(emps.map((e) => [normalizeKeySimple(fullName(e)), { id: e.id, name: fullName(e), rank: e.rank, gross: 0 }]));
@@ -2447,12 +2469,39 @@ async function jpWeek(sun) {
     if (when > c.last) c.last = when;
     clients.set(k, c);
   }
+  // Facturas pagadas de cada uno en el canal (dinero y numero): separan las
+  // facturas de los rascas en semanas cerradas antes de la v48.
+  const invBy = new Map();
+  const invN = new Map();
+  for (const inv of Object.values(res.invoices || {})) {
+    if (!inv.paid_at || !inv.issuer) continue;
+    const k = normalizeKeySimple(inv.issuer);
+    invBy.set(k, (invBy.get(k) || 0) + (Number(inv.amount) || 0));
+    invN.set(k, (invN.get(k) || 0) + 1);
+  }
+  for (const p of people) {
+    if (p.fact == null) {
+      // Sin facturas del canal esa semana (antes de que el bot las copiara) no se puede separar.
+      const k = normalizeKeySimple(p.name);
+      const split = !!closed && invBy.size > 0;
+      p.fact = split ? Math.min(p.gross, invBy.get(k) || 0) : p.gross;
+      p.ras = split ? Math.max(0, p.gross - p.fact) : null;
+      p.rasQty = p.ras != null ? Math.round(p.ras / RASCA_PRICE) : null;
+      p.est = !!closed && p.ras > 0;
+    }
+  }
+  const factTotal = closed ? (closed.datos.factTotal != null ? Number(closed.datos.factTotal) || 0 : Number(res.invSummary?.paid_total) || 0) : Number(res.invSummary?.paid_total) || 0;
   const w = {
     sun,
     closed: !!closed,
+    invBy,
+    invN,
+    factTotal,
     vendido: closed ? Number(closed.datos.total) || 0 : Number(res.invSummary?.paid_total) || 0,
     facturas: closed ? Number(closed.datos.facturas) || 0 : Number(res.invSummary?.paid_count) || 0,
     rascas: closed ? Number(closed.datos.rascas) || 0 : null,
+    // Dinero de rascas: lo guardado (v48) o, en semanas antiguas, n.º × precio.
+    rascasMoney: closed ? (closed.datos.rascasTotal != null ? Number(closed.datos.rascasTotal) || 0 : (Number(closed.datos.rascas) || 0) * RASCA_PRICE) : null,
     nominas: people.reduce((a, p) => a + (p.payout || 0), 0),
     people,
     clients: [...clients.values()].sort((x, y) => y.total - x.total),
@@ -2553,8 +2602,8 @@ function setupPanelJefe() {
     const w = weeks[7], p = weeks[6];
     // ---- Cifras de la semana
     const avg = w.facturas ? Math.round((w.vendido - 0) / w.facturas) : 0;
-    const sub1 = [`${w.facturas} ${w.facturas === 1 ? "factura" : "facturas"}`];
-    if (w.rascas != null) sub1.push(`${w.rascas} ${w.rascas === 1 ? "rasca" : "rascas"}`);
+    const sub1 = [`${w.facturas} ${w.facturas === 1 ? "factura" : "facturas"} (${money(w.factTotal)})`];
+    if (w.rascas != null) sub1.push(`${w.rascas} ${w.rascas === 1 ? "rasca" : "rascas"} (${money(w.rascasMoney)})`);
     else sub1.push("sin rascas hasta cerrar la semana");
     if (avg && w.rascas == null) sub1.push(`ticket medio ${money(avg)}`);
     kpi($("jp-k1"), "💰", `Vendido${w.closed ? "" : " (estimado)"}`, money(w.vendido), delta(w.vendido, p.vendido), sub1.join(" · "));
@@ -2595,7 +2644,7 @@ function setupPanelJefe() {
 
   function renderChart(weeks) {
     const box = $("jp-chart");
-    const W = Math.max(320, Math.round(box.clientWidth || 720)), H = 230, top = 22, base = 186, left = 44;
+    const W = Math.max(320, Math.round(box.clientWidth || 720)), H = 244, top = 22, base = 186, left = 44;
     const max = Math.max(1, ...weeks.map((w) => Math.max(w.vendido, w.nominas)));
     const step = 10 ** Math.floor(Math.log10(max));
     const nice = Math.ceil(max / step / 2) * step * 2 || 1;
@@ -2612,10 +2661,17 @@ function setupPanelJefe() {
       const x = left + i * col + col / 2;
       const sel = i === weeks.length - 1;
       const est = !w.closed;
-      g += `<rect x="${x - bw - 2}" y="${y(w.vendido)}" width="${bw}" height="${base - y(w.vendido)}" rx="4" fill="${sel ? "#3aa0ff" : "#1f5f99"}" ${est ? 'fill-opacity=".55" stroke="#3aa0ff" stroke-dasharray="3 2"' : ""}><title>Vendido ${money(w.vendido)}${est ? " (estimado, sin rascas)" : ""}</title></rect>`;
+      // v48: lo vendido se divide en facturas (naranja) y rascas (azul), como los kits de Aguila v148.
+      const ras = Math.max(0, Math.min(w.vendido, w.rascasMoney || 0));
+      const fac = w.vendido - ras;
+      const tip = `Vendido ${money(w.vendido)} · facturas ${money(fac)}${w.rascasMoney == null ? " · rascas sin pegar (estimado)" : ` · rascas ${money(ras)} (${w.rascas || 0})`}`;
+      const op = sel ? "1" : ".7";
+      g += `<rect x="${x - bw - 2}" y="${y(fac)}" width="${bw}" height="${base - y(fac)}" rx="3" fill="#e8963a" fill-opacity="${est ? ".55" : op}" ${est ? 'stroke="#e8963a" stroke-dasharray="3 2"' : ""}><title>${tip}</title></rect>`;
+      if (ras > 0) g += `<rect x="${x - bw - 2}" y="${y(w.vendido)}" width="${bw}" height="${y(fac) - y(w.vendido)}" rx="3" fill="#3aa0ff" fill-opacity="${op}"><title>${tip}</title></rect>`;
       g += `<rect x="${x + 2}" y="${y(w.nominas)}" width="${bw}" height="${base - y(w.nominas)}" rx="4" fill="#4b5563" ${est ? 'fill-opacity=".55"' : ""}><title>Nóminas ${money(w.nominas)}</title></rect>`;
       line += `${i ? "L" : "M"}${x},${y(w.queda)} `;
       g += `<text x="${x}" y="${base + 16}" fill="${sel ? "#8fcaff" : "#8a96a3"}" font-size="10.5" text-anchor="middle" font-weight="${sel ? 700 : 400}">${jpDM(w.sun)}${est ? "*" : ""}</text>`;
+      g += `<text x="${x}" y="${base + 30}" fill="${w.rascas ? "#8fcaff" : "#5d6773"}" font-size="9.5" text-anchor="middle">🎟️ ${w.rascas == null ? "—" : w.rascas}</text>`;
       if (sel) g += `<text x="${x - bw / 2 - 2}" y="${y(w.vendido) - 6}" fill="#8fcaff" font-size="10.5" text-anchor="middle" font-weight="700">${kShort(w.vendido)}</text>`;
     });
     g += `<path d="${line}" fill="none" stroke="#7cffc4" stroke-width="2"/>`;
@@ -2688,12 +2744,22 @@ function setupPanelJefe() {
       const e = emp.get(normalizeKeySimple(x.name));
       const ix = e ? inactOf(e) : null;
       if (ix && ix.level) head.appendChild(mk("span", `emp-inact l${ix.level}`, `💤 ${ix.more ? `+${INACT_VENTANA}` : ix.days} d`));
+      // v48: cada barra lleva su parte de facturas y su parte de rascas.
       const bar = mk("div", "jp-bar");
-      const fill = mk("span");
-      fill.style.width = `${Math.round((x.gross / max) * 100)}%`;
+      const ras = x.ras != null ? Math.min(x.gross, x.ras) : 0;
+      const fac = x.gross - ras;
+      const fill = mk("span", "f");
+      fill.style.width = `${Math.round((fac / max) * 100)}%`;
       if (x.gross < WEEK_MIN) fill.classList.add("lo");
       bar.appendChild(fill);
-      l.append(head, bar);
+      if (ras > 0) {
+        const rf = mk("span", "r");
+        rf.style.width = `${Math.round((ras / max) * 100)}%`;
+        bar.appendChild(rf);
+      } else fill.classList.add("solo");
+      bar.title = `Facturas ${money(fac)}${x.ras != null ? ` · rascas ${money(ras)}` : " · rascas sin pegar"}`;
+      const sub = mk("small", "jp-rk-sub", x.ras == null && w.closed ? `${money(x.gross)} · sin desglose de facturas y rascas` : `${money(fac)} facturas · 🎟️ ${x.ras == null ? "rascas sin pegar" : `${x.est ? "≈" : ""}${x.rasQty || 0} rascas (${money(ras)})`}`);
+      l.append(head, bar, sub);
       const rgt = mk("div", "jp-num");
       rgt.appendChild(mk("b", "", money(x.gross)));
       const pv = JP.sun === jpOpenSun() ? 0 : prev.get(normalizeKeySimple(x.name));
@@ -2764,6 +2830,394 @@ function setupPanelJefe() {
 }
 
 
+// ============================================================================
+// v48 · Semana en vivo (como Aguila v145). Lo que lleva facturado cada
+// empleado en la semana EN CURSO sin pasar por Pagos: se calcula con las
+// facturas del Discord (discord_log), igual que la semana abierta del Panel.
+// No incluye rascas (se pegan en Pagos). Lo usan el listado y la ficha.
+// ============================================================================
+const LIVE = { sun: "", map: null, total: 0, facturas: 0, at: 0, busy: null, err: "" };
+const LIVE_EVERY = 2 * 60 * 1000; // se refresca solo cada 2 min mientras se mira
+const liveAccess = () => cloudOn() && isJefe();
+
+async function liveLoad(force = false) {
+  if (!liveAccess()) return LIVE;
+  if (LIVE.busy) return LIVE.busy;
+  const sun = jpOpenSun();
+  if (!force && LIVE.map && LIVE.sun === sun && Date.now() - LIVE.at < LIVE_EVERY - 5000) return LIVE;
+  LIVE.busy = (async () => {
+    try {
+      if (!EMP_CLOUD.ok) await empCloudLoad();
+      const w = await jpWeek(sun);
+      const map = new Map();
+      for (const p of w.people || []) map.set(normalizeKeySimple(p.name), Number(p.gross) || 0);
+      Object.assign(LIVE, { sun, map, total: w.vendido || 0, facturas: w.facturas || 0, at: Date.now(), err: "" });
+    } catch (err) {
+      LIVE.err = err?.message || String(err);
+    } finally {
+      LIVE.busy = null;
+      document.dispatchEvent(new CustomEvent("badu-live"));
+    }
+    return LIVE;
+  })();
+  return LIVE.busy;
+}
+
+// Lo de esta semana de una persona.
+//  · Si Pagos tiene cargada ESA misma semana, manda Pagos (incluye rascas).
+//  · Si no, el cálculo en vivo con las facturas del Discord (sin rascas).
+function liveGrossOf(name) {
+  const k = normalizeKeySimple(name);
+  if (PAGOS_WEEK_GROSS && LIVE.sun && payWeekKey() === LIVE.sun && PAGOS_WEEK_GROSS.has(k)) return { v: PAGOS_WEEK_GROSS.get(k), src: "pagos" };
+  if (LIVE.map) return { v: LIVE.map.get(k) || 0, src: "live" };
+  if (PAGOS_WEEK_GROSS?.has(k)) return { v: PAGOS_WEEK_GROSS.get(k), src: "pagos-otra" };
+  return null;
+}
+const liveDM = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+const liveWeekLabel = () => (LIVE.sun ? `${liveDM(LIVE.sun)} al ${liveDM(jpIsoAdd(LIVE.sun, 6))}` : "");
+const liveAgo = () => {
+  if (!LIVE.at) return "";
+  const m = Math.floor((Date.now() - LIVE.at) / 60000);
+  return m < 1 ? "ahora mismo" : `hace ${m} min`;
+};
+// ¿Pagos tiene rascas pegados para esa semana?
+const pagosRasLoaded = (sun) => !!PAGOS_WEEK_RAS && PAGOS_WEEK_RAS_KEY === sun;
+
+// ============================================================================
+// v48 · Licencias de conducir (como Aguila v150): los tipos marcados van en
+// employees.licencia ("Coche,Moto,…") y la imagen en una tabla privada
+// (emp_licencias, SQL 10). Solo el Jefe Tribal las cambia; la Jefatura las ve.
+// ============================================================================
+const LIC_TIPOS = [
+  ["Coche", "🚗"],
+  ["Moto", "🏍️"],
+  ["Camión", "🚚"],
+  ["Avión", "✈️"],
+];
+function licSet(v) {
+  const parts = String(v || "").split(/[,;]+/).map((x) => normalizeKeySimple(x));
+  return new Set(LIC_TIPOS.map(([t]) => t).filter((t) => parts.includes(normalizeKeySimple(t))));
+}
+const licValue = (set) => LIC_TIPOS.map(([t]) => t).filter((t) => set.has(t)).join(",");
+
+const LIC_FOTO = { ok: null, cache: new Map() };
+async function licFotoGet(id) {
+  id = String(id);
+  if (LIC_FOTO.cache.has(id)) return LIC_FOTO.cache.get(id);
+  try {
+    const rows = (await cloud.req(`/rest/v1/emp_licencias?select=foto,updated_at,por&employee_id=eq.${encodeURIComponent(id)}`)) || [];
+    LIC_FOTO.ok = true;
+    const v = rows[0] || null;
+    LIC_FOTO.cache.set(id, v);
+    return v;
+  } catch (err) {
+    if (/PGRST205|42P01|does not exist|404/.test(String(err?.code || "") + String(err?.message || err))) LIC_FOTO.ok = false;
+    throw err;
+  }
+}
+async function licFotoSave(id, foto) {
+  const row = { employee_id: String(id), foto, updated_at: new Date().toISOString(), por: authWho() };
+  await cloud.req("/rest/v1/emp_licencias?on_conflict=employee_id", {
+    method: "POST",
+    body: [row],
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+  });
+  LIC_FOTO.cache.set(String(id), row);
+}
+async function licFotoDel(id) {
+  await cloud.req(`/rest/v1/emp_licencias?employee_id=eq.${encodeURIComponent(String(id))}`, { method: "DELETE" });
+  LIC_FOTO.cache.set(String(id), null);
+}
+// Comprime una imagen a JPEG (lado mayor `max` px) y la devuelve como data:URL.
+function compressImage(file, max = 1400) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error("No se pudo leer la imagen."));
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Esa imagen no se puede abrir."));
+      img.onload = () => {
+        const k = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * k));
+        c.height = Math.max(1, Math.round(img.height * k));
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+function licViewer(src) {
+  const ov = document.createElement("div");
+  ov.className = "lic-viewer";
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = "Licencia";
+  ov.append(img, Object.assign(document.createElement("span"), { textContent: "Toca para cerrar" }));
+  const close = () => {
+    ov.remove();
+    document.removeEventListener("keydown", esc);
+  };
+  const esc = (ev) => ev.key === "Escape" && close();
+  ov.addEventListener("click", close);
+  document.addEventListener("keydown", esc);
+  (document.querySelector("dialog[open]") || document.body).appendChild(ov);
+}
+
+// ============================================================================
+// v48 · El bot del Badulaque (función log-empleados de Supabase, como Aguila
+// v149-v154): log de empleados en Discord, publicar pagas / movimientos /
+// strikes y roles automáticos. El token del bot nunca pasa por aquí: lo
+// tiene Supabase. La función solo responde a la Jefatura.
+// ============================================================================
+const LOGEMP = { queue: new Set(), timer: 0, missing: false, last: null };
+
+async function logEmpCall(body) {
+  const tok = await cloud.token();
+  if (!tok) throw new Error("Inicia sesión con Discord para usar el bot.");
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 140000);
+  try {
+    const r = await fetch(`${BADU_CLOUD_URL}/functions/v1/log-empleados`, {
+      method: "POST",
+      headers: { apikey: BADU_CLOUD_KEY, Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctl.signal,
+    });
+    if (r.status === 404) {
+      LOGEMP.missing = true;
+      throw new Error("Falta crear la función log-empleados en Supabase (11_funcion_log-empleados.ts).");
+    }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false) throw new Error(j.error || j.errores?.[0] || `El bot respondió ${r.status}.`);
+    LOGEMP.missing = false;
+    return j;
+  } catch (err) {
+    if (err?.name === "AbortError") throw new Error("El bot tardó demasiado en responder.");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Se llama sin esperar después de guardar. Junta los cambios de 2 s en una sola llamada.
+function logEmpPush(...ids) {
+  if (!liveAccess() || LOGEMP.missing) return;
+  ids.flat().filter(Boolean).forEach((id) => LOGEMP.queue.add(String(id)));
+  clearTimeout(LOGEMP.timer);
+  LOGEMP.timer = setTimeout(async () => {
+    const list = [...LOGEMP.queue];
+    LOGEMP.queue.clear();
+    if (!list.length) return;
+    try {
+      LOGEMP.last = await logEmpCall({ ids: list });
+      const rc = (LOGEMP.last?.roles || []).filter((c) => c.poner?.length || c.quitar?.length);
+      if (rc.length) toastLogEmp(`🔐 Discord: ${rc.map((c) => `${c.nombre}${c.quitar.length ? ` − ${c.quitar.join(", ")}` : ""}${c.poner.length ? ` + ${c.poner.join(", ")}` : ""}`).join(" · ")}`, true);
+      const re = (LOGEMP.last?.errores || []).filter((x) => /roles/i.test(x));
+      if (re.length) toastLogEmp(`⚠ ${re[0]}`);
+    } catch (err) {
+      console.warn("[log-empleados]", err);
+      if (!LOGEMP.missing) toastLogEmp(`⚠ No se pudo avisar al bot: ${err.message || err}`);
+    }
+  }, 2000);
+}
+
+function toastLogEmp(text, ok = false) {
+  let t = document.getElementById("logemp-toast");
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "logemp-toast";
+    t.className = "logemp-toast";
+    document.body.appendChild(t);
+  }
+  t.textContent = text;
+  t.classList.toggle("ok", !!ok);
+  t.hidden = false;
+  clearTimeout(t._h);
+  t._h = setTimeout(() => (t.hidden = true), 7000);
+}
+
+// Botón «📋 Log de Discord» (Empleados).
+async function logEmpSyncAll(reordenar = false) {
+  const j = await logEmpCall({ sync: true, reordenar });
+  const parts = [];
+  if (j.publicados) parts.push(`${j.publicados} publicados`);
+  if (j.editados) parts.push(`${j.editados} corregidos`);
+  if (j.borrados) parts.push(`${j.borrados} mensajes viejos borrados`);
+  let msg = `📋 Log de Discord al día${parts.length ? `: ${parts.join(" · ")}` : ""}.`;
+  if (j.sinPermiso) msg += ` ⚠ ${j.sinPermiso} mensajes viejos no se pudieron borrar: dale al bot «Gestionar mensajes» en ese canal, o bórralos a mano.`;
+  if (j.errores?.length) msg += ` ⚠ ${j.errores.slice(0, 2).join(" ")}`;
+  return msg;
+}
+
+// Publicar los mensajes de la semana (pagas, movimientos y strikes).
+const PUB_CANAL_TXT = { pagas: "canal de pagas", movs: "canal de movimientos de personal", strikes: "canal de strikes" };
+async function pubInfo(clave, semana) {
+  try {
+    const rows = await cloud.req(`/rest/v1/pub_msgs?select=at,por,msg_ids&semana=eq.${semana}&clave=eq.${clave}`);
+    return rows?.[0] || null;
+  } catch {
+    return null;
+  }
+}
+const pubWhen = (iso) => {
+  const d = new Date(iso);
+  const same = d.toDateString() === new Date().toDateString();
+  return `${same ? "hoy" : d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" })} a las ${d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}`;
+};
+async function pubPaint(el, clave, semana) {
+  if (!el || !semana) return;
+  const info = await pubInfo(clave, semana);
+  el.textContent = info ? `✔ Publicado ${pubWhen(info.at)}${info.por ? ` por ${info.por}` : ""} · «Publicar» corrige el mismo mensaje` : "";
+  el.classList.toggle("ok", !!info);
+}
+async function pubRun(btn, statusEl, clave, semana, getText, after) {
+  const text = getText();
+  if (!text) return alert("No hay nada que publicar.");
+  if (!semana) return alert("Falta la semana.");
+  const info = await pubInfo(clave, semana);
+  if (!confirm(info ? `Este mensaje ya está publicado (${pubWhen(info.at)}).\n\n¿Corregirlo con lo que ves ahora? Se edita el mismo mensaje (no avisa otra vez a nadie).` : `¿Publicar en el ${PUB_CANAL_TXT[clave]}?\n\nLo publica el bot del Badulaque, con las menciones y etiquetas que ves en el mensaje.`)) return;
+  btn.disabled = true;
+  if (statusEl) {
+    statusEl.textContent = "Publicando…";
+    statusEl.classList.remove("ok");
+  }
+  try {
+    const j = await logEmpCall({ publicar: { clave, semana, content: text, por: authWho() } });
+    const extra = after ? (await after()) || "" : "";
+    if (statusEl) {
+      statusEl.textContent = `✔ ${j.editado ? "Corregido" : "Publicado"} en Discord${j.mensajes > 1 ? ` (${j.mensajes} mensajes, no cabía en uno)` : ""}${extra}`;
+      statusEl.classList.add("ok");
+    }
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `⚠ ${err.message || err}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+// Roles de la semana: warns actuales de cada uno y Empleado de la Semana de la última semana cerrada.
+function rolesSemanal() {
+  const strikes = {};
+  for (const e of EMP_CLOUD.list) {
+    if (e.firedAt) continue;
+    const n = Math.min(STRIKE_MAX, strikesBefore(e.id, fullName(e)));
+    strikes[String(e.id)] = isEmployeeNoPay(fullName(e)) || isOwnerRank(e.rank) ? 0 : n;
+  }
+  const last = STRIKE_HIST.find((w) => Array.isArray(w.datos?.rows));
+  const eow = (last?.datos?.rows || []).filter((r) => Number(r.bonus) > 0 && r.id != null).map((r) => String(r.id));
+  return { strikes, eow, semana: last ? String(last.semana) : "" };
+}
+const rolesCall = (q) => logEmpCall({ roles: q });
+const rolesLine = (c) =>
+  c.sinDiscord ? `${c.nombre}: sin ID de Discord` : c.fueraDelServidor ? `${c.nombre}: no está en el servidor` : `${c.nombre}${c.rango ? ` (${c.rango} en la página)` : ""}:${c.quitar?.length ? ` − ${c.quitar.join(", ")}` : ""}${c.poner?.length ? ` + ${c.poner.join(", ")}` : ""}`;
+const rolesSkipped = (j) => (j?.saltados?.length ? `\n\nNo se tocan (varios personajes con el mismo Discord): ${j.saltados.join(" · ")}.` : "");
+
+// ============================================================================
+// v48 · Readmitir con cambios (como Aguila v130): otro rango, otro IBAN o un
+// personaje nuevo tras un CK (nombre, apellido e IBAN nuevos; su antigüedad
+// empieza ese día). Devuelve { name, surname, iban, rank, newChar } o null.
+// ============================================================================
+function askReadmit(f) {
+  return new Promise((resolve) => {
+    const ck = parseBaja(f.firedReason).tipo === "ck";
+    const dlg = document.createElement("dialog");
+    dlg.className = "baja-dlg";
+    const form = document.createElement("form");
+    form.method = "dialog";
+    form.className = "modal-card readmit-form";
+    const el = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    };
+    const field = (label, input) => {
+      const l = el("label", "readmit-f");
+      l.append(el("span", "", label), input);
+      return l;
+    };
+    const inp = (value, ph = "") => {
+      const i = document.createElement("input");
+      i.type = "text";
+      i.className = "text-input";
+      i.value = value || "";
+      i.placeholder = ph;
+      return i;
+    };
+    form.append(el("h3", "", `↩️ Readmitir a ${fullName(f)}`));
+    const nc = document.createElement("input");
+    nc.type = "checkbox";
+    nc.checked = ck;
+    const ncl = el("label", "readmit-ck");
+    ncl.append(nc, el("span", "", "🕊️ Vuelve con un personaje nuevo (CK): nombre, apellido e IBAN nuevos, y su antigüedad empieza hoy"));
+    form.append(ncl);
+    const name = inp(ck ? "" : f.name, f.name);
+    const surname = inp(ck ? "" : f.surname, f.surname);
+    const iban = inp(ck ? "" : f.iban, f.iban || "Ej. J123456");
+    iban.maxLength = 7;
+    const rank = document.createElement("select");
+    rank.className = "text-input";
+    rank.appendChild(new Option("Sin rango", ""));
+    for (const r of RANKS.slice().reverse()) {
+      if (HIGH_RANKS.includes(r.label) && !AUTH.tribal) continue;
+      rank.appendChild(new Option(r.label, r.label));
+    }
+    rank.value = [...rank.options].some((o) => o.value === f.rank) ? f.rank : "";
+    const grid = el("div", "readmit-grid");
+    grid.append(field("Nombre", name), field("Apellido", surname), field("IBAN", iban), field("Rango", rank));
+    form.append(grid);
+    form.append(el("p", "muted readmit-note", f.discord ? "Recupera su Discord y su acceso a la página." : "No tenía Discord guardado: añádelo luego en su ficha."));
+    const err = el("p", "readmit-err", "");
+    const acts = el("div", "emp-acts");
+    const ok = el("button", "primary", "Readmitir");
+    ok.type = "submit";
+    const no = el("button", "ghost", "Cancelar");
+    no.type = "button";
+    acts.append(ok, no);
+    form.append(err, acts);
+    dlg.append(form);
+    const sync = () => {
+      for (const [i, old] of [[name, f.name], [surname, f.surname], [iban, f.iban]]) {
+        if (!nc.checked && !i.value) i.value = old || "";
+        i.placeholder = nc.checked ? (i === iban ? "IBAN del personaje nuevo" : "Del personaje nuevo") : old || "";
+      }
+    };
+    sync();
+    nc.addEventListener("change", () => {
+      if (nc.checked) for (const i of [name, surname, iban]) i.value = "";
+      sync();
+      name.focus();
+    });
+    let result = null;
+    form.addEventListener("submit", (ev) => {
+      const v = { name: name.value.trim().replace(/\s+/g, " "), surname: surname.value.trim().replace(/\s+/g, " "), iban: parseIban(iban.value), rank: rank.value, newChar: nc.checked };
+      const bad = (t) => {
+        ev.preventDefault();
+        err.textContent = t;
+      };
+      if (!v.name || !v.surname) return bad("Pon nombre y apellido.");
+      if (v.iban === null) return bad("El IBAN no es válido: una letra y 6 números (ej. J123456), o déjalo vacío.");
+      const k = normalizeKeySimple(`${v.name} ${v.surname}`);
+      if (EMP_CLOUD.list.some((e) => !e.firedAt && String(e.id) !== String(f.id) && normalizeKeySimple(fullName(e)) === k)) return bad("Ya hay un empleado con ese nombre.");
+      if (v.newChar && k === normalizeKeySimple(fullName(f))) return bad("Es un personaje nuevo: cambia el nombre, o quita la casilla de CK.");
+      result = v;
+    });
+    no.addEventListener("click", () => dlg.close());
+    dlg.addEventListener("close", () => {
+      dlg.remove();
+      resolve(result);
+    });
+    (document.querySelector("dialog[open]") || document.body).appendChild(dlg);
+    dlg.showModal();
+    setTimeout(() => (ck ? name : ok).focus(), 50);
+  });
+}
+
 function setupTabs() {
   const tabs = document.querySelectorAll(".tab");
   const panels = document.querySelectorAll(".tab-panel");
@@ -2782,6 +3236,8 @@ function setupTabs() {
       const zone = TAB_PASSWORD_ZONES[target];
       // El Panel es solo del Jefe Tribal (y solo con la nube).
       if (target === "tab-jefe" && !(cloudOn() && isJefe() && AUTH.tribal)) return;
+      // Empleados: con la nube, solo los Jefes (sin ella pide su contraseña dentro).
+      if (target === "tab-emp" && cloudOn() && !isJefe()) return;
       if (zone && cloudOn()) {
         // Con la nube manda la sesion: solo los Jefes entran, sin contrasena.
         if (!isJefe()) return;
@@ -4140,6 +4596,9 @@ function setupContabilidad() {
     const wsOf = new Map(employees.map((e) => [e, weekStrike(wk, e.id, fullName(e), grossOf(e), isEmployeeNoPay(fullName(e)), e.rank)]));
     const idle = employees.filter((e) => wsOf.get(e).on).sort(byRankThenName);
     const forgiven = employees.filter((e) => wsOf.get(e).forgiven && wsOf.get(e).auto).sort(byRankThenName);
+    // Facturas pagadas de cada uno (numero), para la historia de la ficha.
+    const nfactBy = new Map();
+    for (const v of Object.values(state.invoices)) if (v.paid_at && v.issuer) nfactBy.set(normalizeKeySimple(v.issuer), (nfactBy.get(normalizeKeySimple(v.issuer)) || 0) + 1);
     lastSnapshot = {
       rows: employees.map((e) => {
         const name = fullName(e);
@@ -4151,6 +4610,11 @@ function setupContabilidad() {
           name,
           rank: e.rank || "",
           gross: r ? r.total : 0,
+          // v48: facturas y rascas por separado (como los kits en Aguila v146).
+          fact: r ? r.fact || 0 : 0,
+          ras: r ? r.ras || 0 : 0,
+          rasQty: r ? r.rasQty || 0 : 0,
+          nfact: nfactBy.get(normalizeKeySimple(name)) || 0,
           payout: r && !noPay ? r.toPay : 0,
           bonus: r && !noPay ? r.bonus : 0,
           noPay,
@@ -4161,6 +4625,8 @@ function setupContabilidad() {
       total: invSummary.paid_total + salesSummary.total,
       facturas: invSummary.paid_count,
       rascas: salesSummary.qty,
+      factTotal: invSummary.paid_total,
+      rascasTotal: salesSummary.total,
     };
     const boss = cloudOn() && AUTH.tribal && wk;
     const act = async (btn, fn) => {
@@ -4383,6 +4849,11 @@ function setupContabilidad() {
     }
     const rows = buildRanking(employees);
     PAGOS_WEEK_GROSS = rows.length ? new Map(rows.map((r) => [normalizeKeySimple(r.name), r.total])) : null;
+    // Rascas de cada uno en la semana cargada (para la ficha y el Panel).
+    PAGOS_WEEK_RAS = rows.length && salesSummary.qty ? new Map(rows.map((r) => [normalizeKeySimple(r.name), { qty: r.rasQty || 0, money: r.ras || 0 }])) : null;
+    PAGOS_WEEK_RAS_KEY = payWeekKey();
+    setTimeout(() => document.dispatchEvent(new Event("badu-pagos")), 0);
+
     const totalAPagar = rows.reduce((a, r) => a + (r.emp && !r.noPay ? r.toPay : 0), 0);
 
     const totalGeneral = invSummary.total + salesSummary.total;
@@ -5011,10 +5482,37 @@ function setupEmployeesModal(state, refreshPagos) {
     }
   });
 
+  // v48: Gestión de empleados es una sección (como Aguila v138).
   function openAdminModal() {
-    adminModal.showModal();
-    adminModal.dispatchEvent(new Event("badu-open"));
+    document.querySelector('.tab[data-tab-target="tab-emp"]')?.click();
   }
+
+  // v48: el bot publica el mensaje de pagas en su canal (como Aguila v152).
+  async function payRowsForDiscord() {
+    await buildTotalsRows();
+    return totalsRows.filter((r) => !r.noPay);
+  }
+  const pubBox = byId("pg-pub");
+  const pubSt = byId("pg-pub-st");
+  const pubShow = () => {
+    if (!pubBox) return;
+    pubBox.hidden = !(cloudOn() && isJefe() && EMP_CLOUD.hasLic);
+    if (!pubBox.hidden) pubPaint(pubSt, "pagas", payWeekKey());
+  };
+  document.addEventListener("badu-auth", () => setTimeout(pubShow, 300));
+  for (const id of ["dlog-from", "dlog-to"]) byId(id)?.addEventListener("change", pubShow);
+  document.addEventListener("badu-pagos", pubShow);
+  byId("pg-pub-discord")?.addEventListener("click", async () => {
+    let rows = [];
+    try {
+      rows = await payRowsForDiscord();
+    } catch {
+      return alert("No se pudieron cargar los empleados.");
+    }
+    if (!rows.length) return alert("No hay nadie que cobre esta semana.");
+    const text = discordPayText(rows);
+    pubRun(byId("pg-pub-discord"), pubSt, "pagas", payWeekKey(), () => text);
+  });
 
   byId("conta-manage-employees").addEventListener("click", openAdminModal);
   byId("employees-manage").addEventListener("click", () => {
@@ -5199,7 +5697,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     return mk("span", `pg-badge ${empRankCls(rank)}`, rank || "Sin rango");
   }
   function strikeChip(n) {
-    return mk("span", "pg-strike emp-st" + (n >= STRIKE_MAX ? " max" : "") + (n ? "" : " zero"), `${n >= STRIKE_MAX ? "🚫 " : n ? "⚠️ " : ""}${n}/${STRIKE_MAX}`);
+    return mk("span", "pg-strike emp-st" + (n >= STRIKE_MAX ? " max" : "") + (n ? "" : " zero"), `${n >= STRIKE_MAX ? "🚫 " : n ? "⚠️ " : ""}${Math.min(n, STRIKE_MAX)}/${STRIKE_MAX}`);
   }
 
   // ---------- Pestañas y modo ----------
@@ -5252,7 +5750,79 @@ function setupEmployeesAdminModal({ onChanged }) {
     { k: "discord", label: "Sin Discord", test: (e) => !getEmployeeDiscord(fullName(e)), cls: "w" },
     { k: "nodates", label: "Sin fecha de ingreso", test: (e) => !empDatesOf(e).altaAt, cls: "w", dates: true },
     { k: "inact", label: "Sin facturar", test: (e) => (inactOf(e)?.level || 0) >= 1, cls: "w", cloud: true },
+    { k: "nopay", label: "No cobran", test: (e) => isEmployeeNoPay(fullName(e)), cloud: true },
   ];
+  // 🏆 Empleado(s) de la Semana de la última semana cerrada en Pagos (Aguila v136).
+  function eowIds() {
+    const w = STRIKE_HIST.find((x) => Array.isArray(x.datos?.rows));
+    const ids = new Set();
+    for (const r of w?.datos?.rows || []) {
+      if (!(Number(r.bonus) > 0)) continue;
+      const e = employees.find((x) => (r.id != null && String(x.id) === String(r.id)) || normalizeKeySimple(fullName(x)) === normalizeKeySimple(r.name));
+      if (e) ids.add(String(e.id));
+    }
+    return { ids, week: w ? dm(String(w.semana)) : "" };
+  }
+  // 💵 Semana en curso (Aguila v145/v155): cifra en color y barra hacia el mínimo.
+  const liveOn = () => cloudOn() && isJefe();
+  function weekState(e, v) {
+    if (isEmployeeNoPay(fullName(e)) || isOwnerRank(e.rank)) return "np";
+    return v >= WEEK_MIN ? "ok" : "low";
+  }
+  function weekCell(e) {
+    const cell = mk("div", "emp-row-wk");
+    const g = liveGrossOf(fullName(e));
+    if (!g) return cell;
+    const st = weekState(e, g.v);
+    cell.classList.add(st);
+    const top = mk("div", "emp-row-wk-t");
+    top.appendChild(mk("b", "", st === "np" ? (g.v ? fmtMoney(g.v) : "—") : fmtMoney(g.v)));
+    const note = st === "np" ? (isOwnerRank(e.rank) ? "Jefe Tribal" : g.v ? "vendido · no cobra" : "no cobra") : g.v < WEEK_MIN ? `faltan ${fmtMoney(WEEK_MIN - g.v)} al mínimo` : "mínimo ✔";
+    top.appendChild(mk("small", "", note));
+    cell.appendChild(top);
+    if (st !== "np") {
+      const scale = Math.max(WEEK_MIN * 1.5, g.v, 1);
+      const bar = mk("div", "emp-row-wk-bar");
+      const fill = mk("i");
+      fill.style.width = `${Math.min(100, (g.v / scale) * 100)}%`;
+      const tick = mk("span", "min");
+      tick.style.left = `${(WEEK_MIN / scale) * 100}%`;
+      tick.title = `Mínimo ${fmtMoney(WEEK_MIN)}`;
+      bar.append(fill, tick);
+      cell.appendChild(bar);
+    }
+    cell.title = `Esta semana${g.src === "live" ? " (en vivo, sin rascas)" : g.src === "pagos" ? " (Pagos, con rascas)" : ""}: ${fmtMoney(g.v)} · mínimo ${fmtMoney(WEEK_MIN)}`;
+    return cell;
+  }
+  function renderLive() {
+    const bar = byId("emp-live");
+    const sortChip = byId("emp-sort-week");
+    if (sortChip) sortChip.hidden = !liveOn();
+    const lb = byId("emp-logdc");
+    if (lb) lb.hidden = !(liveOn() && EMP_CLOUD.hasLic);
+    const rb = byId("emp-roles");
+    if (rb) rb.hidden = !(canEdit() && cloudOn() && EMP_CLOUD.hasLic);
+    if (!bar) return;
+    bar.hidden = !liveOn();
+    if (bar.hidden) return;
+    bar.textContent = "";
+    bar.appendChild(mk("span", "emp-live-dot" + (LIVE.busy ? " busy" : "")));
+    const txt = mk("span", "emp-live-txt");
+    if (LIVE.map) {
+      const paying = employees.filter((e) => !isEmployeeNoPay(fullName(e)) && !isOwnerRank(e.rank));
+      const under = paying.filter((e) => (liveGrossOf(fullName(e))?.v || 0) < WEEK_MIN).length;
+      txt.append(mk("b", "", "En vivo"), ` · semana del ${liveWeekLabel()} · `, mk("b", "", fmtMoney(LIVE.total)), ` en ${LIVE.facturas} ${LIVE.facturas === 1 ? "factura" : "facturas"}`);
+      if (paying.length) txt.append(" · ", mk("span", under ? "emp-live-low" : "emp-live-ok", under ? `${under} bajo el mínimo` : "todos con el mínimo"));
+      txt.appendChild(mk("small", "", ` · actualizado ${liveAgo()} · sin rascas`));
+    } else txt.textContent = LIVE.err ? `En vivo: no se pudo cargar (${LIVE.err})` : "En vivo: cargando lo vendido esta semana…";
+    const rf = btn("↻", "ghost emp-live-rf", "Actualizar ahora");
+    rf.disabled = !!LIVE.busy;
+    rf.addEventListener("click", () => {
+      liveLoad(true);
+      renderLive();
+    });
+    bar.append(txt, rf);
+  }
 
   // Filtro por fechas (ingreso o contratacion) entre "desde" y "hasta".
   const dateFilter = () => {
@@ -5276,6 +5846,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     if (sortBy === "seniority") out = out.slice().sort((x, y) => (empDatesOf(x).altaAt || "9999").localeCompare(empDatesOf(y).altaAt || "9999") || byRankThenName(x, y));
     else if (sortBy === "az") out = out.slice().sort((x, y) => fullName(x).localeCompare(fullName(y), "es", { sensitivity: "base" }));
     else if (sortBy === "strikes") out = out.slice().sort((x, y) => strikesOf(y) - strikesOf(x) || byRankThenName(x, y));
+    else if (sortBy === "week") out = out.slice().sort((x, y) => (liveGrossOf(fullName(y))?.v || 0) - (liveGrossOf(fullName(x))?.v || 0) || byRankThenName(x, y));
     if (filter === "inact") out = out.slice().sort((x, y) => (inactOf(y)?.days || 0) - (inactOf(x)?.days || 0));
     return out;
   }
@@ -5326,10 +5897,12 @@ function setupEmployeesAdminModal({ onChanged }) {
     modal.classList.toggle("emp-in-ficha", !!inFicha);
     if (inFicha) return renderFicha();
     fichaId = null;
+    renderLive();
     renderKpis();
     const list = byId("emp-list");
     list.textContent = "";
     const shown = shownList();
+    const eow = cloudOn() && isJefe() ? eowIds() : { ids: new Set(), week: "" };
     if (!shown.length) list.appendChild(mk("p", "muted emp-empty", employees.length ? "Nadie con ese filtro." : "Todavía no hay empleados. Añádelos en «Nuevo empleado»."));
     for (const e of shown) {
       const full = fullName(e);
@@ -5354,8 +5927,21 @@ function setupEmployeesAdminModal({ onChanged }) {
       row.append(avatar(e), nm, badge(e.rank));
       if (cloudOn() && !isOwnerRank(e.rank)) row.append(strikeChip(strikesOf(e)));
       else row.append(mk("span", ""));
+      // v48: el hueco del centro muestra cómo va la semana; a la derecha, licencias.
+      row.appendChild(liveOn() ? weekCell(e) : mk("span", "emp-row-wk"));
       const ic = cloudOn() && isJefe() ? inactChip(e) : null;
       if (ic) flags.prepend(ic);
+      const lic = cloudOn() && EMP_CLOUD.hasLic ? licSet(e.licencia) : null;
+      if (lic) {
+        const lc = mk("span", "emp-row-lic" + (lic.size ? "" : " none"), lic.size ? LIC_TIPOS.filter(([t]) => lic.has(t)).map(([, i]) => i).join("") : "🪪 —");
+        lc.title = lic.size ? `Licencias: ${[...lic].join(", ")}` : "Sin licencias registradas";
+        flags.appendChild(lc);
+      }
+      if (eow.ids.has(String(e.id))) {
+        const t = mk("span", "emp-eow", "🏆 Empleado de la Semana");
+        t.title = `Empleado de la Semana (semana del ${eow.week})`;
+        flags.prepend(t);
+      }
       row.append(flags, mk("span", "emp-go", "›"));
       row.addEventListener("click", () => openFicha(e.id));
       list.appendChild(row);
@@ -5364,10 +5950,11 @@ function setupEmployeesAdminModal({ onChanged }) {
 
   // Al abrir una ficha (o pasar a otra) se empieza arriba del todo.
   const toTop = () => {
-    const card = modal.querySelector(".emp-card");
-    if (card) card.scrollTop = 0;
     const f = modal.querySelector(".emp-ficha");
     if (f) f.scrollTop = 0;
+    // v48: es una sección: se sube al principio de la página si hace falta.
+    const top = modal.getBoundingClientRect().top + window.scrollY - 8;
+    if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top) });
   };
   function openFicha(id) {
     fichaId = String(id);
@@ -5389,7 +5976,351 @@ function setupEmployeesAdminModal({ onChanged }) {
     return r;
   }
 
+  // v48 · «Su historia en el Badulaque» (como Aguila v146/v147): una barra
+  // por semana con facturas (naranja) y rascas (azul), en rojo las semanas
+  // bajo el mínimo, la semana en curso con borde discontinuo y, encima, lo que
+  // pasó: ⬆️ ascenso, ⬇️ descenso, ⚠️ strike y 🏆 Empleado de la Semana.
+  const histCache = new Map();
+  let histRange = window.innerWidth < 820 ? 8 : 12;
+  const ehSunOf = (iso) => {
+    const md = dlogMadridParts(Date.parse(iso));
+    return new Date(Date.UTC(md.y, md.m - 1, md.d) - md.wd * 86400000).toISOString().slice(0, 10);
+  };
+  const ehNice = (v) => {
+    const raw = v / 3;
+    const p = 10 ** Math.floor(Math.log10(raw || 1));
+    const n = raw / p;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+  };
+  const ehK = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)));
+  let ehLast = null;
+  const ehRefresh = (id) => {
+    if (ehLast && fichaId === id && String(ehLast.e.id) === id && ehLast.holder.isConnected) renderHistChart(ehLast.holder, ehLast.e, ehLast.full, ehLast.wg);
+  };
+  // Semanas cerradas antes de la v48: se separan con las facturas del Discord de esa semana.
+  const rhPending = new Set();
+  function rasHistLoad(suns, forId) {
+    const todo = suns.filter((x) => !rhPending.has(x) && !JP.weeks.has(x));
+    if (!todo.length) return;
+    todo.forEach((x) => rhPending.add(x));
+    Promise.allSettled(todo.map((x) => jpWeek(x))).then(() => {
+      if (fichaId === forId && !editing && tab === "list") ehRefresh(forId);
+    });
+  }
+  function renderHistChart(holder, e, full, wg) {
+    ehLast = { holder, e, full, wg };
+    holder.textContent = "";
+    const key = normalizeKeySimple(full);
+    const id = String(e.id);
+    const all = [];
+    for (const w of STRIKE_HIST) {
+      const r = strikeRowIn(w, e.id, full);
+      if (!r) continue;
+      const sun = String(w.semana);
+      const g = Number(r.gross || 0);
+      const p = { sun, label: dm(sun), v: g, fact: g, rq: null, rm: 0, n: r.nfact != null ? Number(r.nfact) : null, est: false, strike: !!r.strike, eow: Number(r.bonus) > 0, ev: [] };
+      if (r.ras != null) {
+        p.rm = Number(r.ras) || 0;
+        p.rq = r.rasQty != null ? Number(r.rasQty) || 0 : Math.round(p.rm / RASCA_PRICE);
+        p.fact = r.fact != null ? Number(r.fact) || 0 : Math.max(0, g - p.rm);
+      } else {
+        const jw = JP.weeks.get(sun);
+        if (jw?.invBy && !jw.invBy.size) p.nosplit = true;
+        else if (jw?.invBy) {
+          p.fact = Math.min(g, jw.invBy.get(key) || 0);
+          p.rm = g - p.fact;
+          p.rq = Math.round(p.rm / RASCA_PRICE);
+          p.n = jw.invN?.get(key) ?? p.n;
+          p.est = true;
+        } else p.pending = true;
+      }
+      all.push(p);
+    }
+    all.reverse();
+    const nowSun = LIVE.sun || jpOpenSun();
+    if (wg && !all.some((p) => p.sun === nowSun)) {
+      const p = { sun: nowSun, label: "Esta", v: wg.v, fact: wg.v, rq: null, rm: 0, n: null, now: true, ev: [] };
+      const pr = PAGOS_WEEK_RAS?.get(key);
+      if (wg.src !== "live" && pr && pagosRasLoaded(nowSun)) {
+        p.rq = pr.qty || 0;
+        p.rm = pr.money || 0;
+        p.fact = Math.max(0, wg.v - p.rm);
+      }
+      all.push(p);
+    }
+    const hist = histCache.get(id);
+    let ups = 0;
+    let downs = 0;
+    for (const h of hist || []) {
+      if (h.tipo !== "rango") continue;
+      const m = parseRankLog(h.texto);
+      if (!m) continue;
+      m.up ? ups++ : downs++;
+      const p = all.find((x) => x.sun === ehSunOf(h.at));
+      if (p) p.ev.push({ i: m.up ? "⬆️" : "⬇️", t: `${m.up ? "Ascendido" : "Bajado"} a ${m.to}` });
+    }
+    for (const p of all) {
+      if (p.strike) p.ev.push({ i: "⚠️", t: "Strike" });
+      if (p.eow) p.ev.push({ i: "🏆", t: "Empleado de la Semana" });
+    }
+    const pts = histRange ? all.slice(-histRange) : all;
+    const pend = pts.filter((p) => p.pending).map((p) => p.sun);
+    if (pend.length) rasHistLoad(pend, id);
+    if (hist === undefined) {
+      histCache.set(id, null);
+      empHistory(id)
+        .then((rows) => {
+          histCache.set(id, rows || []);
+          ehRefresh(id);
+        })
+        .catch(() => histCache.set(id, []));
+    }
+    if (!pts.length) return holder.appendChild(mk("p", "muted emp-small", "Todavía no hay semanas cerradas con esta persona."));
+
+    const max = Math.max(WEEK_MIN * 1.25, ...pts.map((p) => p.v));
+    const step = ehNice(max);
+    const top = Math.ceil(max / step) * step;
+    const pct = (v) => `${(v / top) * 100}%`;
+    const plot = mk("div", "eh-plot");
+    for (let v = step; v <= top + 1; v += step) {
+      const gl = mk("div", "eh-grid");
+      gl.style.bottom = pct(v);
+      gl.appendChild(mk("span", "", ehK(v)));
+      plot.appendChild(gl);
+    }
+    const minL = mk("div", "eh-min");
+    minL.style.bottom = pct(WEEK_MIN);
+    minL.appendChild(mk("span", "", "mín."));
+    minL.title = `Mínimo ${fmtMoney(WEEK_MIN)}`;
+    plot.appendChild(minL);
+    const dense = pts.length > 16;
+    const cols = mk("div", "eh-cols" + (dense ? " dense" : ""));
+    const xs = mk("div", "eh-x" + (dense ? " dense" : ""));
+    const tip = mk("div", "eh-tip");
+    tip.hidden = true;
+    const showTip = (p, col) => {
+      tip.textContent = "";
+      const end = jpIsoAdd(p.sun, 6);
+      tip.append(mk("b", "", p.now ? `Semana en curso (${liveDM(p.sun)} al ${liveDM(end)})` : `Semana del ${liveDM(p.sun)} al ${liveDM(end)}`), mk("b", "", `Total: ${fmtMoney(p.v)}`));
+      tip.appendChild(mk("span", "tf", `■ Facturas: ${fmtMoney(p.fact)}${p.n != null ? ` (${p.n} ${p.n === 1 ? "factura" : "facturas"})` : ""}`));
+      tip.appendChild(mk("span", "tr", p.rq == null ? (p.now ? "■ Rascas: sin pegar en Pagos" : p.nosplit ? "■ Rascas: sin desglose (no hay facturas del Discord de esa semana)" : "■ Rascas: calculando…") : `■ Rascas: ${p.est ? "≈ " : ""}${p.rq} · ${fmtMoney(p.rm)}`));
+      if (p.v < WEEK_MIN && !p.now) tip.appendChild(mk("span", "tl", `Bajo el mínimo (le faltaron ${fmtMoney(WEEK_MIN - p.v)})`));
+      for (const x of p.ev) tip.appendChild(mk("span", "", `${x.i} ${x.t}`));
+      tip.hidden = false;
+      const c = col.offsetLeft + col.offsetWidth / 2;
+      const tw = tip.offsetWidth;
+      const W = plot.clientWidth;
+      let left = c > W / 2 ? c - col.offsetWidth / 2 - 6 - tw : c + col.offsetWidth / 2 + 6;
+      left = Math.max(-30, Math.min(W - tw, left));
+      tip.style.left = `${left}px`;
+    };
+    for (const p of pts) {
+      const col = mk("div", "eh-col" + (p.now ? " now" : "") + (p.v < WEEK_MIN && !p.now ? " lo" : "") + (p.nosplit ? " ns" : ""));
+      const bar = mk("div", "eh-bar");
+      bar.style.height = pct(p.v);
+      if (p.rm > 0 && p.v > 0) {
+        const r = mk("i", "r");
+        r.style.height = `${(p.rm / p.v) * 100}%`;
+        bar.appendChild(r);
+      }
+      bar.appendChild(mk("i", "f"));
+      bar.appendChild(mk("em", "", ehK(p.v)));
+      if (p.ev.length) {
+        const ev = mk("div", "eh-ev", p.ev.map((x) => x.i).join(""));
+        ev.style.bottom = `calc(${pct(p.v)} + 19px)`;
+        col.appendChild(ev);
+      }
+      col.appendChild(bar);
+      col.tabIndex = 0;
+      col.addEventListener("mouseenter", () => showTip(p, col));
+      col.addEventListener("focus", () => showTip(p, col));
+      col.addEventListener("click", () => showTip(p, col));
+      col.addEventListener("mouseleave", () => (tip.hidden = true));
+      col.addEventListener("blur", () => (tip.hidden = true));
+      cols.appendChild(col);
+      const x = mk("span", p.now ? "now" : "");
+      x.append(mk("b", "", p.label), mk("small", p.rq ? "on" : "", `🎟️ ${p.rq == null ? (p.now || p.nosplit ? "—" : "…") : `${p.est ? "≈" : ""}${p.rq}`}`));
+      xs.appendChild(x);
+    }
+    plot.append(cols, tip);
+    holder.append(plot, xs);
+
+    const leg = mk("div", "eh-leg");
+    const li = (cls, t) => {
+      const sp = mk("span");
+      sp.append(mk("i", cls), t);
+      leg.appendChild(sp);
+    };
+    li("lf", "Facturas");
+    li("lr", "Rascas");
+    li("ll", "Semana bajo el mínimo");
+    leg.appendChild(mk("span", "", "⬆️ ascenso · ⬇️ descenso · ⚠️ strike · 🏆 Empleado de la Semana"));
+    holder.appendChild(leg);
+
+    const closed = pts.filter((p) => !p.now);
+    const sum = mk("div", "eh-sum");
+    const kpi = (t, v, sub) => {
+      const k = mk("div", "eh-k");
+      k.append(t, mk("b", "", v), mk("small", "", sub));
+      sum.appendChild(k);
+    };
+    if (closed.length) {
+      const avg = Math.round(closed.reduce((a, p) => a + p.v, 0) / closed.length);
+      const avgF = Math.round(closed.reduce((a, p) => a + p.fact, 0) / closed.length);
+      const rr = closed.filter((p) => p.rq != null);
+      const rAvg = rr.length ? Math.round(rr.reduce((a, p) => a + p.rq, 0) / rr.length) : null;
+      kpi("Media por semana", fmtMoney(avg), `${fmtMoney(avgF)} facturas${rAvg != null ? ` + ${rAvg} rascas` : ""}`);
+      const best = closed.reduce((a, p) => (p.v > a.v ? p : a), closed[0]);
+      kpi("Mejor semana", fmtMoney(best.v), `${best.label}${best.eow ? " · 🏆" : ""}`);
+      const rSum = rr.reduce((a, p) => a + p.rq, 0);
+      kpi("Rascas vendidos", `${rr.some((p) => p.est) ? "≈ " : ""}${rSum}`, `en ${rr.length} ${rr.length === 1 ? "semana cerrada" : "semanas cerradas"}`);
+    }
+    const nStr = all.filter((p) => p.strike).length;
+    const nWeeks = all.filter((p) => !p.now).length;
+    const parts = [];
+    if (ups) parts.push(`${ups} ${ups === 1 ? "ascenso" : "ascensos"}`);
+    if (downs) parts.push(`${downs} ${downs === 1 ? "descenso" : "descensos"}`);
+    parts.push(`${nStr} ${nStr === 1 ? "strike" : "strikes"}`);
+    const alta = empDatesOf(e).altaAt;
+    kpi("En el Badulaque", alta ? empSeniority(alta) || `${nWeeks} semanas` : `${nWeeks} ${nWeeks === 1 ? "semana" : "semanas"}`, parts.join(" · "));
+    holder.appendChild(sum);
+    const notes = [];
+    if (pts.some((p) => p.now && p.rq == null)) notes.push("«Esta» es la semana en curso: los rascas aparecen al pegarlos en Pagos.");
+    if (pts.some((p) => p.est)) notes.push("Los «≈» son semanas cerradas antes de la versión 48: facturas y rascas separados con las facturas del Discord de esa semana.");
+    notes.push("Toca o pasa el ratón por una barra para ver el desglose.");
+    holder.appendChild(mk("p", "muted emp-small eh-note", notes.join(" ")));
+  }
+
+  // v48 · 🪪 Licencias de la ficha (como Aguila v150): los cuatro tipos (un
+  // toque los marca y se guarda al momento) y la imagen de la licencia.
+  let licPaste = null;
+  function licBox(e) {
+    const b = box("🪪 Licencias", "emp-lic");
+    const id = String(e.id);
+    const can = canEdit();
+    const chips = mk("div", "lic-chips");
+    const have = licSet(e.licencia);
+    for (const [t, ic] of LIC_TIPOS) {
+      const c = mk(can ? "button" : "span", "lic-chip" + (have.has(t) ? " on" : ""));
+      c.append(mk("i", "", ic), mk("span", "", t), mk("b", "", have.has(t) ? "✔" : ""));
+      if (can) {
+        c.type = "button";
+        c.title = have.has(t) ? `Quitar la licencia de ${t}` : `Marcar que tiene licencia de ${t}`;
+        c.addEventListener("click", async () => {
+          const cur = EMP_CLOUD.list.find((x) => String(x.id) === id) || e;
+          const next = licSet(cur.licencia);
+          next.has(t) ? next.delete(t) : next.add(t);
+          chips.querySelectorAll("button").forEach((x) => (x.disabled = true));
+          try {
+            const v = licValue(next);
+            await empCloudPatch(e.id, { licencia: v });
+            e.licencia = v;
+            renderFicha();
+          } catch (err) {
+            alert(`No se pudo guardar: ${err.message || err}`);
+            chips.querySelectorAll("button").forEach((x) => (x.disabled = false));
+          }
+        });
+      }
+      chips.appendChild(c);
+    }
+    b.appendChild(chips);
+    if (!have.size) b.appendChild(mk("p", "muted emp-small", can ? "Sin licencias registradas: toca las que tenga." : "Sin licencias registradas."));
+    const ph = mk("div", "lic-photo");
+    b.appendChild(ph);
+    const paint = (row, msg) => {
+      ph.textContent = "";
+      if (LIC_FOTO.ok === false) {
+        ph.appendChild(mk("p", "muted emp-small", "Para guardar la imagen de la licencia, ejecuta en Supabase el SQL 10_licencias_y_bot.sql."));
+        return;
+      }
+      if (row?.foto) {
+        const img = mk("img", "lic-img");
+        img.src = row.foto;
+        img.alt = `Licencia de ${fullName(e)}`;
+        img.title = "Ver en grande";
+        img.addEventListener("click", () => licViewer(row.foto));
+        ph.appendChild(img);
+        const at = row.updated_at ? new Date(row.updated_at) : null;
+        ph.appendChild(mk("p", "muted emp-small", `Subida${at ? ` el ${at.toLocaleDateString("es-ES")}` : ""}${row.por ? ` por ${row.por}` : ""} · toca la imagen para verla en grande.`));
+      } else if (!can) ph.appendChild(mk("p", "muted emp-small", "Sin imagen de la licencia."));
+      if (!can) return;
+      const drop = mk("div", "lic-drop" + (row?.foto ? " small" : ""));
+      drop.tabIndex = 0;
+      drop.append(mk("b", "", row?.foto ? "Cambiar imagen" : "📋 Pega aquí el recorte de la licencia"), mk("span", "", "Ctrl+V · arrastra una imagen · o elige un archivo"));
+      const file = mk("input");
+      file.type = "file";
+      file.accept = "image/*";
+      file.hidden = true;
+      const pick = btn("📁 Subir imagen");
+      pick.addEventListener("click", () => file.click());
+      const acts = mk("div", "lic-acts");
+      acts.appendChild(pick);
+      if (row?.foto) {
+        const del = btn("🗑 Quitar imagen");
+        del.addEventListener("click", async () => {
+          if (!confirm(`¿Quitar la imagen de la licencia de ${fullName(e)}?`)) return;
+          try {
+            await licFotoDel(id);
+            paint(null);
+          } catch (err) {
+            alert(`No se pudo quitar: ${err.message || err}`);
+          }
+        });
+        acts.appendChild(del);
+      }
+      if (msg) acts.appendChild(mk("span", "muted emp-small", msg));
+      ph.append(drop, acts, file);
+      const take = async (f) => {
+        if (!f || !/^image\//.test(f.type)) return alert("Eso no es una imagen.");
+        paint(row, "Guardando…");
+        try {
+          const data = await compressImage(f, 1400);
+          await licFotoSave(id, data);
+          paint(LIC_FOTO.cache.get(id), "✔ Imagen guardada");
+        } catch (err) {
+          paint(row);
+          alert(`No se pudo guardar la imagen: ${err.message || err}`);
+        }
+      };
+      file.addEventListener("change", () => take(file.files?.[0]));
+      drop.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        drop.classList.add("over");
+      });
+      drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+      drop.addEventListener("drop", (ev) => {
+        ev.preventDefault();
+        drop.classList.remove("over");
+        take(ev.dataTransfer?.files?.[0]);
+      });
+      licPaste = (ev) => {
+        const it = [...(ev.clipboardData?.items || [])].find((x) => x.type.startsWith("image/"));
+        if (!it) return;
+        ev.preventDefault();
+        take(it.getAsFile());
+      };
+    };
+    paint(LIC_FOTO.cache.get(id));
+    if (!LIC_FOTO.cache.has(id) && LIC_FOTO.ok !== false) {
+      ph.appendChild(mk("p", "muted emp-small", "Cargando la imagen…"));
+      licFotoGet(id)
+        .then((row) => b.isConnected && paint(row))
+        .catch(() => b.isConnected && paint(null));
+    }
+    return b;
+  }
+  // Ctrl+V con la ficha abierta pega la imagen de la licencia (si no se escribe en un campo).
+  document.addEventListener("paste", (ev) => {
+    if (!licPaste || !fichaId || editing) return;
+    if (!document.querySelector(".emp-lic .lic-drop")) return;
+    const a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "file") return;
+    licPaste(ev);
+  });
+
   function renderFicha() {
+    licPaste = null;
     const view = byId("emp-ficha-view");
     const e = employees.find((x) => String(x.id) === fichaId);
     if (!e) return;
@@ -5486,76 +6417,66 @@ function setupEmployeesAdminModal({ onChanged }) {
     }
     card.appendChild(datos);
 
-    // Rango
+    if (cloudOn() && EMP_CLOUD.hasLic && isJefe()) card.appendChild(licBox(e));
+
+    // Rango (v48: los rangos son botones, un clic y pasa directamente a ese rango)
     const rango = box("Rango", "emp-rango");
     const li = EMP_LADDER.findIndex((x) => normalizeKeySimple(x) === normalizeKeySimple(e.rank || ""));
+    const canMove = canEdit() && li >= 0 && !isSelf(e);
     if (isOwnerRank(e.rank)) rango.appendChild(mk("p", "muted emp-small", "Jefe Tribal: el rango del dueño (100 %). No entra en la escalera ni lleva strikes."));
     else if (li < 0) rango.appendChild(mk("p", "muted emp-small", e.rank ? `${e.rank}: rango fuera de la escalera (lo cambias en «Editar datos»).` : "Sin rango: ponle uno en «Editar datos»."));
     else {
       const ladder = mk("div", "emp-ladder");
       EMP_LADDER.forEach((r, k) => {
         if (k) ladder.appendChild(mk("span", "emp-ladder-sep", "›"));
-        ladder.appendChild(mk("span", `pg-badge ${empRankCls(r)}${k === li ? " cur" : ""}`, r));
+        const cls = `pg-badge ${empRankCls(r)}${k === li ? " cur" : ""}`;
+        if (!canMove || k === li) return ladder.appendChild(mk("span", cls, r));
+        const b = mk("button", `${cls} emp-ladder-btn ${k > li ? "up" : "down"}`, r);
+        b.type = "button";
+        b.title = `${k > li ? "Subir" : "Bajar"} a ${r}`;
+        b.addEventListener("click", () => moveRank(e, r, b));
+        ladder.appendChild(b);
       });
       rango.appendChild(ladder);
+      if (canMove) rango.appendChild(mk("p", "muted emp-small emp-ladder-hint", "Toca un rango para subirlo o bajarlo directamente a ese rango."));
     }
-    const gross = PAGOS_WEEK_GROSS ? PAGOS_WEEK_GROSS.get(normalizeKeySimple(full)) || 0 : null;
+    // Lo de esta semana: en vivo con las facturas del Discord, o Pagos si tiene esa semana.
+    const wg = cloudOn() && isJefe() ? liveGrossOf(full) : PAGOS_WEEK_GROSS ? { v: PAGOS_WEEK_GROSS.get(normalizeKeySimple(full)) || 0, src: "pagos-otra" } : null;
     if (!isOwnerRank(e.rank)) {
-      if (gross != null) rango.appendChild(kv("Esta semana", `${fmtMoney(gross)} facturados · mínimo ${fmtMoney(WEEK_MIN)} ${gross >= WEEK_MIN ? "✔" : "✖"}`, gross >= WEEK_MIN ? "emp-ok" : "emp-no"));
-      else rango.appendChild(mk("p", "muted emp-small", "Procesa la semana en Pagos para ver lo que lleva facturado."));
-    }
-    if (canEdit() && li >= 0 && !isSelf(e)) {
-      const ra = mk("div", "emp-acts");
-      if (EMP_LADDER[li + 1]) {
-        const up = btn(`⬆️ Subir a ${EMP_LADDER[li + 1]}`);
-        up.addEventListener("click", () => moveRank(e, EMP_LADDER[li + 1], up));
-        ra.appendChild(up);
-      }
-      if (li > 0) {
-        const down = btn(`⬇️ Bajar a ${EMP_LADDER[li - 1]}`);
-        down.addEventListener("click", () => moveRank(e, EMP_LADDER[li - 1], down));
-        ra.appendChild(down);
-      }
-      rango.appendChild(ra);
+      if (wg) {
+        const src = wg.src === "live" ? `En vivo · ${liveWeekLabel()}` : wg.src === "pagos" ? "Esta semana · Pagos" : "Semana cargada en Pagos";
+        rango.appendChild(kv(src, `${fmtMoney(wg.v)} vendidos · mínimo ${fmtMoney(WEEK_MIN)} ${wg.v >= WEEK_MIN ? "✔" : "✖"}`, wg.v >= WEEK_MIN ? "emp-ok" : "emp-no"));
+        if (wg.v < WEEK_MIN) rango.appendChild(mk("p", "muted emp-small", `Le faltan ${fmtMoney(WEEK_MIN - wg.v)} para el mínimo.`));
+        if (wg.src === "live") rango.appendChild(mk("p", "muted emp-small", `Con las facturas del Discord, sin rascas · actualizado ${liveAgo()}.`));
+      } else if (cloudOn() && isJefe()) rango.appendChild(mk("p", "muted emp-small", LIVE.err ? "No se pudo cargar lo vendido esta semana." : "Cargando lo vendido esta semana…"));
+      else rango.appendChild(mk("p", "muted emp-small", "Procesa la semana en Pagos para ver lo que lleva vendido."));
     }
     card.appendChild(rango);
 
-    // Facturacion de las ultimas semanas cerradas (+ la actual si Pagos la tiene)
-    const fac = box("Facturación · últimas semanas", "emp-fac");
-    const pts = [];
-    for (const w of STRIKE_HIST) {
-      const r = strikeRowIn(w, e.id, full);
-      if (r) pts.push({ label: dm(w.semana), v: Number(r.gross || 0) });
-      if (pts.length >= 6) break;
-    }
-    pts.reverse();
-    if (gross != null) pts.push({ label: "Esta", v: gross, now: true });
-    if (!pts.length) fac.appendChild(mk("p", "muted emp-small", cloudOn() ? "Todavía no hay semanas cerradas con esta persona." : "La gráfica necesita las semanas cerradas de la nube (en la web)."));
-    else {
-      const max = Math.max(WEEK_MIN * 1.25, ...pts.map((p) => p.v));
-      const chart = mk("div", "emp-chart");
-      const minLine = mk("div", "emp-chart-min");
-      minLine.style.bottom = `${(WEEK_MIN / max) * 100}%`;
-      minLine.title = `Mínimo ${fmtMoney(WEEK_MIN)}`;
-      chart.appendChild(minLine);
-      const labels = mk("div", "emp-chart-x");
-      for (const p of pts) {
-        const c = mk("div", "emp-col" + (p.v < WEEK_MIN ? " lo" : "") + (p.now ? " now" : ""));
-        c.style.height = `${Math.max(2, (p.v / max) * 100)}%`;
-        c.title = `${p.label}: ${fmtMoney(p.v)}`;
-        c.appendChild(mk("em", "", p.v >= 1000 ? `${Math.round(p.v / 1000)}k` : String(p.v)));
-        chart.appendChild(c);
-        labels.appendChild(mk("span", "", p.label));
+    // v48: «Su historia en el Badulaque» (facturas y rascas por semana)
+    if (cloudOn() && isJefe()) {
+      const fac = box("📈 Su historia en el Badulaque", "emp-fac emp-eh-box");
+      const holder = mk("div", "eh");
+      const rng = mk("span", "eh-rng");
+      for (const [k, t] of [[8, "8 semanas"], [12, "12 semanas"], [0, "Todo"]]) {
+        const b = mk("button", "eh-rng-b" + (histRange === k ? " on" : ""), t);
+        b.type = "button";
+        b.addEventListener("click", () => {
+          histRange = k;
+          rng.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+          renderHistChart(holder, e, full, wg);
+        });
+        rng.appendChild(b);
       }
-      fac.append(chart, labels);
-      const closed = pts.filter((p) => !p.now);
-      if (closed.length) {
-        const avg = Math.round(closed.reduce((a, p) => a + p.v, 0) / closed.length);
-        const best = Math.max(...closed.map((p) => p.v));
-        fac.appendChild(mk("p", "muted emp-small", `Media: ${fmtMoney(avg)} · Mejor semana: ${fmtMoney(best)} · Línea = mínimo ${fmtMoney(WEEK_MIN)}`));
-      }
+      fac.querySelector("h6").appendChild(rng);
+      fac.appendChild(holder);
+      renderHistChart(holder, e, full, wg);
+      card.appendChild(fac);
+    } else {
+      const fac = box("Facturación · últimas semanas", "emp-fac");
+      fac.appendChild(mk("p", "muted emp-small", "La historia semana a semana necesita la nube (en la web, con tu sesión de Discord)."));
+      card.appendChild(fac);
     }
-    card.appendChild(fac);
 
     // Strikes
     if (!isOwnerRank(e.rank)) {
@@ -5594,6 +6515,10 @@ function setupEmployeesAdminModal({ onChanged }) {
     else {
       try {
         rows = (await empHistory(id)) || [];
+        if (!Array.isArray(histCache.get(id))) {
+          histCache.set(id, rows);
+          ehRefresh(id);
+        }
       } catch (x) {
         err = x.code === "PGRST205" || x.code === "42P01" || x.status === 404
           ? "Falta pegar en Supabase el SQL 7_historial_empleados.sql para guardar el historial."
@@ -5724,10 +6649,14 @@ function setupEmployeesAdminModal({ onChanged }) {
 
   async function moveRank(e, to, b) {
     const up = rankOrder(to) > rankOrder(e.rank);
-    if (!confirm(`¿${up ? "Subir" : "Bajar"} a ${fullName(e)} de ${e.rank} a ${to}?`)) return;
+    const ia = EMP_LADDER.findIndex((x) => normalizeKeySimple(x) === normalizeKeySimple(e.rank || ""));
+    const ib = EMP_LADDER.findIndex((x) => normalizeKeySimple(x) === normalizeKeySimple(to));
+    const jump = ia >= 0 && ib >= 0 ? Math.abs(ib - ia) : 1;
+    if (!confirm(`¿${up ? "Subir" : "Bajar"} a ${fullName(e)} de ${e.rank} a ${to}?${jump > 1 ? `\n\n(Son ${jump} rangos de golpe.)` : ""}`)) return;
     b.disabled = true;
     try {
       await updateEmployee(e.id, { rank: to }, adminPass);
+      histCache.delete(String(e.id));
       setStatus(`✔ ${fullName(e)} ahora es ${to}.`, true);
       dc.key = "";
       const name = fullName(e);
@@ -6021,6 +6950,11 @@ function setupEmployeesAdminModal({ onChanged }) {
     dc.maxSeen = +max;
     if (dc.sun > max) dc.sun = max;
     byId("emp-dc-week").textContent = `Semana del ${ascDM(dc.sun)} al ${ascDM(ascDay(dc.sun, 6))}`;
+    try {
+      dcPubShow();
+    } catch (err) {
+      console.warn("[publicar]", err);
+    }
     byId("emp-dc-next").disabled = +dc.sun >= +max;
     const info = byId("emp-dc-info");
     const key = String(+dc.sun);
@@ -6059,7 +6993,7 @@ function setupEmployeesAdminModal({ onChanged }) {
     }
     const nu = dc.items.length, nd = dc.desc.length, nb = dc.bajas.length;
     const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
-    info.textContent = `${pl(nu, "ascenso", "ascensos")}, ${pl(nd, "descenso", "descensos")} y ${pl(nb, "baja", "bajas")} · entre el ${ascDM(ascDay(dc.sun, 6))} y el ${ascDM(ascDay(dc.sun, 13))}`;
+    info.textContent = `${pl(nu, "ascenso", "ascensos")}, ${pl(nd, "descenso", "descensos")} y ${pl(nb, "baja", "bajas")} · del sábado ${ascDM(ascDay(dc.sun, 6))} al ${ascDM(ascDay(dc.sun, 13))} a mediodía (hora de España)`;
     if (!nu && !nd && !nb) list.appendChild(mk("p", "muted emp-empty", "No hay ascensos, descensos ni bajas para esta semana (se apuntan solos al subir o bajar a alguien desde su ficha y al despedir). Puedes mandar solo el reconocimiento al empleado de la semana."));
     if (nu) list.appendChild(mk("div", "emp-dc-group", "📈 Ascensos"));
     for (const it of dc.items) {
@@ -6146,6 +7080,82 @@ function setupEmployeesAdminModal({ onChanged }) {
     if (!ok) openCopyFallback(t);
     else setStatus("✔ Mensaje copiado. Pégalo en el canal de Discord.", true);
   });
+
+  // v48: el bot publica los dos mensajes de la semana y cambia los roles (como Aguila v152).
+  const dcWeek = () => dcIso(dc.sun);
+  // part: "" = las dos cosas · "eow" = solo Empleado de la Semana · "strikes" = solo warns.
+  const dcRoles = (part, dry) => {
+    const sem = rolesSemanal();
+    return rolesCall({ dry, semanal: { ...(part !== "eow" ? { strikes: sem.strikes } : {}), ...(part !== "strikes" ? { eow: sem.eow } : {}) } });
+  };
+  async function rolesPreview() {
+    const box = byId("emp-dc-roles");
+    const list = byId("emp-dc-roles-list");
+    const st = byId("emp-dc-roles-st");
+    const ap = byId("emp-dc-roles-apply");
+    if (!box || box.hidden) return;
+    list.textContent = "";
+    ap.hidden = true;
+    st.textContent = "Mirando los roles en Discord…";
+    try {
+      const j = await dcRoles("", true);
+      const ch = (j.cambios || []).filter((c) => c.poner?.length || c.quitar?.length || c.sinDiscord || c.fueraDelServidor);
+      for (const c of ch) {
+        const row = mk("div", "emp-dc-role");
+        row.appendChild(mk("b", "", c.nombre));
+        if (c.sinDiscord || c.fueraDelServidor) row.appendChild(mk("span", "muted", c.sinDiscord ? "sin ID de Discord" : "no está en el servidor"));
+        for (const r of c.quitar || []) row.appendChild(mk("span", "rem", `− ${r}`));
+        for (const r of c.poner || []) row.appendChild(mk("span", "add", `+ ${r}`));
+        list.appendChild(row);
+      }
+      const n = ch.filter((c) => c.poner?.length || c.quitar?.length).length;
+      st.textContent = n ? `${n} ${n === 1 ? "persona" : "personas"} con roles por cambiar.` : "✔ Los roles de warn y del Empleado de la Semana ya están al día.";
+      if (j.saltados?.length) st.textContent += ` Sin tocar (varios personajes): ${j.saltados.join(" · ")}.`;
+      if (j.errores?.length) st.textContent += ` ⚠ ${j.errores[0]}`;
+      ap.hidden = !n;
+    } catch (err) {
+      st.textContent = `⚠ ${err.message || err}`;
+    }
+  }
+  byId("emp-dc-roles-check")?.addEventListener("click", rolesPreview);
+  byId("emp-dc-roles-apply")?.addEventListener("click", async () => {
+    const ap = byId("emp-dc-roles-apply");
+    ap.disabled = true;
+    try {
+      const j = await dcRoles("", false);
+      const n = (j.cambios || []).filter((c) => c.poner?.length || c.quitar?.length).length;
+      await rolesPreview();
+      byId("emp-dc-roles-st").textContent = `✔ Roles cambiados a ${n} ${n === 1 ? "persona" : "personas"}.${j.errores?.length ? ` ⚠ ${j.errores[0]}` : ""}`;
+    } catch (err) {
+      byId("emp-dc-roles-st").textContent = `⚠ ${err.message || err}`;
+    } finally {
+      ap.disabled = false;
+    }
+  });
+  const rolesAfter = (part) => async () => {
+    try {
+      const j = await dcRoles(part, false);
+      const n = (j.cambios || []).filter((c) => c.poner?.length || c.quitar?.length).length;
+      rolesPreview();
+      return n ? ` · roles cambiados a ${n} ${n === 1 ? "persona" : "personas"}` : "";
+    } catch (err) {
+      return ` · ⚠ roles: ${err.message || err}`;
+    }
+  };
+  byId("emp-dc-pub")?.addEventListener("click", () => pubRun(byId("emp-dc-pub"), byId("emp-dc-pub-st"), "movs", dcWeek(), dcText, rolesAfter("eow")));
+  byId("emp-dc-st-pub")?.addEventListener("click", () => pubRun(byId("emp-dc-st-pub"), byId("emp-dc-st-pub-st"), "strikes", dcWeek(), dcStText, rolesAfter("strikes")));
+  function dcPubShow() {
+    const on = cloudOn() && isJefe() && EMP_CLOUD.hasLic;
+    for (const id of ["emp-dc-pub", "emp-dc-st-pub"]) {
+      const b = byId(id);
+      if (b) b.hidden = !on;
+    }
+    const rb = byId("emp-dc-roles");
+    if (rb) rb.hidden = !on;
+    if (!on || !dc.sun) return;
+    pubPaint(byId("emp-dc-pub-st"), "movs", dcWeek());
+    pubPaint(byId("emp-dc-st-pub-st"), "strikes", dcWeek());
+  }
 
   function renderRanksTab() {
     const t = byId("emp-rank-table");
@@ -6250,10 +7260,16 @@ function setupEmployeesAdminModal({ onChanged }) {
     const full = fullName(f);
     if (employees.some((e) => normalizeKeySimple(fullName(e)) === normalizeKeySimple(full))) return alert(`${full} ya está en la plantilla.`);
     if (cloudOn() && isHigh(f.rank) && !AUTH.tribal) return alert("Solo el Jefe Tribal puede readmitir a un Gerente.");
-    if (!confirm(`¿Readmitir a ${full}${f.rank ? ` como ${f.rank}` : ""}? Sale de Despedidos y vuelve a la plantilla con su Discord e IBAN.`)) return;
+    // v48: con la nube, una ventana para cambiar rango, IBAN o el personaje (CK).
+    let ch = null;
+    if (cloudOn()) {
+      ch = await askReadmit(f);
+      if (!ch) return;
+      if (isHigh(ch.rank) && !AUTH.tribal) return alert("Solo el Jefe Tribal puede dar ese rango.");
+    } else if (!confirm(`¿Readmitir a ${full}${f.rank ? ` como ${f.rank}` : ""}? Sale de Despedidos y vuelve a la plantilla con su Discord e IBAN.`)) return;
     try {
-      await readmitEmployee(f, adminPass);
-      setStatus(`↩️ ${full} vuelve a la plantilla.`, true);
+      await readmitEmployee(f, adminPass, ch);
+      setStatus(`↩️ ${ch ? `${ch.name} ${ch.surname}` : full} vuelve a la plantilla${ch?.newChar ? ` (personaje nuevo, antes ${full})` : ""}.`, true);
       await refresh();
       await (onChanged?.());
     } catch (err) {
@@ -6299,7 +7315,7 @@ function setupEmployeesAdminModal({ onChanged }) {
       return;
     }
     // Inactividad: se lee en segundo plano y se repinta al llegar.
-    if (cloudOn() && isJefe()) inactLoad().then((ok) => ok && modal.open && renderAll());
+    if (cloudOn() && isJefe()) inactLoad().then((ok) => ok && sectionOn() && renderAll());
   }
 
   // ---------- Desbloquear (programa de escritorio) ----------
@@ -6416,6 +7432,8 @@ function setupEmployeesAdminModal({ onChanged }) {
   modal.addEventListener("badu-open", () => {
     // Siempre se abre en el Listado (y vuelve a mirar las semanas cerradas).
     tab = "list";
+    fichaId = null;
+    editing = false;
     dc.hist = false;
     modal.querySelectorAll(".emp-tab").forEach((b) => b.classList.toggle("is-on", b.dataset.empTab === "list"));
     modal.querySelectorAll(".emp-pane").forEach((p) => (p.hidden = p.dataset.empPane !== "list"));
@@ -6423,7 +7441,88 @@ function setupEmployeesAdminModal({ onChanged }) {
     refresh();
   });
 
-  refresh();
+  // v48: Gestión de empleados es una sección (como Aguila v138): se recarga
+  // cada vez que se entra en ella.
+  const section = byId("tab-emp");
+  function sectionOn() {
+    return !section || section.classList.contains("is-active");
+  }
+  if (section) {
+    let wasOn = section.classList.contains("is-active");
+    new MutationObserver(() => {
+      const on = section.classList.contains("is-active");
+      if (on && !wasOn) {
+        modal.dispatchEvent(new Event("badu-open"));
+        liveLoad();
+      }
+      wasOn = on;
+    }).observe(section, { attributes: true, attributeFilter: ["class"] });
+  }
+  // Semana en vivo: se pinta al llegar los datos y se refresca sola cada 2
+  // minutos mientras la sección está a la vista.
+  document.addEventListener("badu-live", () => {
+    if (tab !== "list" || editing || !sectionOn()) return;
+    renderList();
+  });
+  setInterval(() => {
+    if (!(cloudOn() && isJefe()) || document.hidden || tab !== "list" || !sectionOn()) return;
+    liveLoad();
+  }, 30000);
+
+  // v48: log de empleados en Discord (lo publica el bot).
+  const logBtn = byId("emp-logdc");
+  const runLog = async (reordenar) => {
+    logBtn.disabled = true;
+    setStatus(reordenar ? "📋 Rehaciendo el log de Discord en orden… (puede tardar un minuto)" : "📋 Poniendo al día el log de Discord… (puede tardar un minuto)");
+    try {
+      const msg = await logEmpSyncAll(reordenar);
+      setStatus(msg, true);
+      if (!reordenar) {
+        const again = btn("↕ Rehacer en orden", "ghost emp-logdc-again", "Borra los mensajes del bot y los publica otra vez ordenados por rango (los nuevos se van quedando al final)");
+        again.addEventListener("click", () => {
+          if (confirm("¿Rehacer el log en orden?\n\nEl bot borra sus mensajes del canal y los vuelve a publicar ordenados por rango, con las bajas al final.")) runLog(true);
+        });
+        status.append(" ", again);
+      }
+    } catch (err) {
+      setStatus(`⚠ ${err.message || err}`);
+    } finally {
+      logBtn.disabled = false;
+    }
+  };
+  logBtn?.addEventListener("click", () => {
+    if (!confirm("¿Poner al día el log de empleados en Discord?\n\n• Publica o corrige el mensaje de cada empleado (también las bajas).\n• Borra los mensajes viejos escritos a mano con la plantilla.\n• No menciona a nadie: no salta ninguna notificación.")) return;
+    runLog(false);
+  });
+  // v48: revisar y corregir los roles de rango y Trabajadores de toda la plantilla.
+  const rolesBtn = byId("emp-roles");
+  rolesBtn?.addEventListener("click", async () => {
+    rolesBtn.disabled = true;
+    setStatus("🔐 Mirando los roles de cada uno en Discord…");
+    try {
+      const j = await rolesCall({ todos: true, dry: true });
+      const ch = (j.cambios || []).filter((c) => c.poner?.length || c.quitar?.length);
+      const warn = (j.cambios || []).filter((c) => c.sinDiscord || c.fueraDelServidor).map(rolesLine);
+      if (!ch.length) {
+        setStatus(`✔ Todos tienen el rol de su rango y el de Trabajadores.${j.saltados?.length ? ` (Sin tocar por tener varios personajes: ${j.saltados.join(" · ")}.)` : ""}${warn.length ? ` ⚠ ${warn.join(" · ")}` : ""}${j.errores?.length ? ` ⚠ ${j.errores[0]}` : ""}`, true);
+        return;
+      }
+      const list = ch.map((c) => `• ${rolesLine(c)}`).join("\n");
+      if (!confirm(`El bot pondría en Discord los roles según el rango que tiene cada uno en la página:\n\n${list.slice(0, 1500)}${list.length > 1500 ? "\n…" : ""}${rolesSkipped(j)}\n\n¿Aplicar?`)) {
+        setStatus("Roles sin tocar.");
+        return;
+      }
+      const r = await rolesCall({ todos: true });
+      const done = (r.cambios || []).filter((c) => (c.poner?.length || c.quitar?.length) && c.ok).length;
+      setStatus(`✔ Roles corregidos a ${done} ${done === 1 ? "persona" : "personas"}.${r.errores?.length ? ` ⚠ ${r.errores[0]}` : ""}`, !r.errores?.length);
+    } catch (err) {
+      setStatus(`⚠ ${err.message || err}`);
+    } finally {
+      rolesBtn.disabled = false;
+    }
+  });
+
+  if (sectionOn()) refresh();
 }
 
 function processCrafteos(rawText) {
