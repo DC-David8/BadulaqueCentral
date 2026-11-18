@@ -18,12 +18,12 @@
 const API = "https://discord.com/api/v10";
 
 // ---- IDs del servidor del Badulaque (clic derecho → Copiar ID) -------------
-const GUILD = "PON_AQUI_EL_ID_DEL_SERVIDOR";
-const CANAL_LOG = "PON_AQUI_EL_ID_DEL_CANAL_DEL_LOG"; // #log de empleados
+const GUILD = "1364613906890227794";
+const CANAL_LOG = "1572706882622324896"; // #log de empleados
 const CANALES_PUB: Record<string, string> = {
-  pagas: "PON_AQUI_EL_ID_DEL_CANAL_DE_PAGAS", // mejor solo Jefatura
-  movs: "PON_AQUI_EL_ID_DEL_CANAL_DE_MOVIMIENTOS", // ascensos, descensos y empleado de la semana
-  strikes: "PON_AQUI_EL_ID_DEL_CANAL_DE_STRIKES",
+  pagas: "1364613909272592485", // mejor solo Jefatura
+  movs: "1364613908744114213", // ascensos, descensos y empleado de la semana
+  strikes: "1364613908744114213",
 };
 // -----------------------------------------------------------------------------
 
