@@ -284,6 +284,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 51 · 24 de noviembre de 2026 · Emoji tarjetazo en las pagas
+- «Empleados cobran esta semana» usa el emoji `tarjetazo` (antes `sa`, que chocaba con el 🈂️ de Discord).
+
 ### Versión 50 · 24 de noviembre de 2026 · Emojis de pagas con sus IDs nuevos
 - Los emojis animados del mensaje de pagas se volvieron a subir al servidor con IDs nuevos; la página usa los nuevos (con los viejos Discord los mostraba como texto).
 

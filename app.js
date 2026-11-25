@@ -1058,7 +1058,7 @@ const PAY_EMOJI = {
   copa: "<a:cup:1571684099242860544>",
   vip: "<a:vip:1571684098005532815>",
   resumen: "<a:gifmeowthmoney:1571684094130126878>",
-  cobran: "<a:sa:1571680284418515077>",
+  cobran: "<a:tarjetazo:1574946768834011290>",
   total: "<a:almrichguy:1571684101734277200>",
   noCobra: "<a:no:1571684875503665262>",
   ibanPendiente: "<a:loadingpleasewai:1571684092758728805>",
