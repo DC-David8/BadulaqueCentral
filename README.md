@@ -284,6 +284,9 @@ Al publicar un cambio, sube el número de versión en `index.html`: el pie de p�
 
 Cada cambio queda también detallado en el historial de commits. El pie de la página muestra la versión publicada.
 
+### Versión 50 · 24 de noviembre de 2026 · Emojis de pagas con sus IDs nuevos
+- Los emojis animados del mensaje de pagas se volvieron a subir al servidor con IDs nuevos; la página usa los nuevos (con los viejos Discord los mostraba como texto).
+
 ### Versión 49 · 18 de noviembre de 2026 · Empleados a todo el ancho
 - La sección de Empleados ocupa todo el ancho de la pantalla (antes se quedaba en el ancho de la antigua ventana) y la lista y la ficha ya no tienen barra de desplazamiento propia: se baja con la página.
 - En la ficha, Datos, Licencias y Rango van en una fila; la historia y los strikes, a todo el ancho.

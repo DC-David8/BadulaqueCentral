@@ -1051,15 +1051,15 @@ const DC_EMOJI_MANZANA = "<:manzana:1469893121981677588>";
 const DC_EMOJI_SALUDO = "<:pandasaludo:1419702029781045388>";
 // Emojis animados del servidor para el mensaje de pagas.
 const PAY_EMOJI = {
-  nominas: "<a:richxp:1571680286637301810>",
-  cobra: "<a:dollabills9:1571680285295116374>",
-  medalla: "<a:winmedal:1571680272548626523>",
-  warn: "<a:agentwarning327:1571680281549865051>",
-  copa: "<a:cup:1571680277913145515>",
-  vip: "<a:vip:1571680276034363422>",
-  resumen: "<a:gifmeowthmoney:1571680270808252546>",
+  nominas: "<a:richxp:1571684105354219551>",
+  cobra: "<a:dollabills9:1571684103999324290>",
+  medalla: "<a:winmedal:1571684095203999856>",
+  warn: "<a:agentwarning327:1571684100593684540>",
+  copa: "<a:cup:1571684099242860544>",
+  vip: "<a:vip:1571684098005532815>",
+  resumen: "<a:gifmeowthmoney:1571684094130126878>",
   cobran: "<a:sa:1571680284418515077>",
-  total: "<a:almrichguy:1571680283248304284>",
+  total: "<a:almrichguy:1571684101734277200>",
   noCobra: "<a:no:1571684875503665262>",
   ibanPendiente: "<a:loadingpleasewai:1571684092758728805>",
 };
